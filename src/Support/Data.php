@@ -44,6 +44,9 @@ class Data
     public static function dot($array, $prepend = '')
     {
         $results = [];
+        if (is_null($array)) {
+            return $results;
+        }
         foreach ($array as $key => $value) {
             // prettier-ignore
             if ((is_array($value) && !empty($value)) ||
