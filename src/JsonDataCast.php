@@ -25,6 +25,10 @@ class JsonDataCast implements CastsAttributes
     {
         $value = json_decode($value, true);
 
+        if (is_null($value)) {
+            return null;
+        }
+
         if ($model instanceof HasJsonDataRelations) {
             $relations = $model->getJsonDataRelations($key, $value, $attributes);
             $pathsByRelations = self::getPathsByRelations($relations);
@@ -54,6 +58,10 @@ class JsonDataCast implements CastsAttributes
      */
     public function set($model, $key, $value, $attributes)
     {
+        if (is_null($value)) {
+            return null;
+        }
+
         if ($model instanceof HasJsonDataRelations) {
             $relations = $model->getJsonDataRelations($key, $value, $attributes);
             $pathsByRelations = self::getPathsByRelations($relations);
