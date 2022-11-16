@@ -110,7 +110,8 @@ class JsonDataCast implements CastsAttributes
         $idsByRelations = [];
         $attributes = $model->getAttributes();
         foreach ($castsWithRelations as $key) {
-            $value = json_decode(data_get($attributes, $key), true);
+            $attributeValue = data_get($attributes, $key);
+            $value = !empty($attributeValue) ? json_decode($attributeValue, true) : null;
             $relations = $model->getJsonDataRelations($key, $value, $attributes);
             $pathsByRelations = self::getPathsByRelations($relations);
             foreach ($pathsByRelations as $relation => $paths) {
