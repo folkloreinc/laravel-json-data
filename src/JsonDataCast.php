@@ -24,7 +24,7 @@ class JsonDataCast implements CastsAttributes
      */
     public function get($model, $key, $value, $attributes)
     {
-        $value = json_decode($value, true);
+        $value = !empty($value) ? json_decode($value, true) : null;
 
         if ($model instanceof HasJsonDataRelations) {
             $relations = $model->getJsonDataRelations($key, $value, $attributes);
