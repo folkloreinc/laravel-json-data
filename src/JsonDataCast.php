@@ -74,7 +74,7 @@ class JsonDataCast implements CastsAttributes
         if ($model instanceof HasJsonDataColumnExtract) {
             $columnsExtract = $model->getJsonDataColumnExtract($key, $value, $attributes);
             $return = [
-                $key => json_encode($value),
+                $key => !is_null($value) ? json_encode($value) : null,
             ];
             foreach ($columnsExtract as $path => $column) {
                 $return[$column] = data_get($value, $path);
@@ -83,7 +83,7 @@ class JsonDataCast implements CastsAttributes
             return $return;
         }
 
-        return json_encode($value);
+        return !is_null($value) ? json_encode($value) : null;
     }
 
     public static function syncRelations($model)
