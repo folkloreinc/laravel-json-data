@@ -10,6 +10,7 @@ use Folklore\Contracts\Eloquent\HasJsonDataRelations;
 use Folklore\Contracts\Eloquent\HasJsonDataColumnExtract;
 use ReflectionClass;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOneOrMany;
 
 class JsonDataCast implements CastsAttributes
 {
@@ -133,6 +134,14 @@ class JsonDataCast implements CastsAttributes
                 $relationClass->associate($ids[0]);
             } elseif ($relationClass instanceof BelongsTo && sizeof($ids) === 0) {
                 $relationClass->dissociate();
+            } elseif ($relationClass instanceof HasOneOrMany && sizeof($ids) > 0) {
+                $relationClass
+                    ->getRelated()
+                    ->newQuery()
+                    ->whereIn('id', $ids)
+                    ->update([
+                        $relationClass->getForeignKeyName() => $relationClass->getParentKey(),
+                    ]);
             } else {
                 $relationClass->sync($ids);
             }
