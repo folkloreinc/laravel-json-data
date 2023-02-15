@@ -12,6 +12,8 @@ use ReflectionClass;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasOneOrMany;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Arr;
 
 class JsonDataCast implements CastsAttributes
 {
@@ -29,10 +31,12 @@ class JsonDataCast implements CastsAttributes
         $value = !empty($value) ? json_decode($value, true) : null;
 
         if ($model instanceof HasJsonDataRelations) {
-            $relations = $model->getJsonDataRelations($key, $value, $attributes);
-            $pathsByRelations = self::getPathsByRelations($relations);
-            foreach ($pathsByRelations as $relation => $paths) {
-                $value = Data::reducePaths($paths, $value, function (
+            $value = self::normalizeJsonDataRelations(
+                $model->getJsonDataRelations($key, $value, $attributes)
+            )->reduce(function ($value, $item) use ($model) {
+                $relation = $item['relation'];
+                $paths = $item['path'];
+                return Data::reducePaths($paths, $value, function (
                     $newValue,
                     $path,
                     $itemPath
@@ -42,7 +46,7 @@ class JsonDataCast implements CastsAttributes
                     data_set($newValue, $path, $item);
                     return $newValue;
                 });
-            }
+            }, $value);
         }
 
         return $value;
@@ -60,17 +64,18 @@ class JsonDataCast implements CastsAttributes
     public function set($model, $key, $value, $attributes)
     {
         if ($model instanceof HasJsonDataRelations) {
-            $relations = $model->getJsonDataRelations($key, $value, $attributes);
-            $pathsByRelations = self::getPathsByRelations($relations);
-
-            foreach ($pathsByRelations as $relation => $paths) {
-                $value = Data::reducePaths($paths, $value, function ($newValue, $path, $item) use (
+            $value = self::normalizeJsonDataRelations(
+                $model->getJsonDataRelations($key, $value, $attributes)
+            )->reduce(function ($value, $item) {
+                $relation = $item['relation'];
+                $paths = $item['path'];
+                return Data::reducePaths($paths, $value, function ($newValue, $path, $item) use (
                     $relation
                 ) {
                     data_set($newValue, $path, self::getPathFromItem($item, $relation));
                     return $newValue;
                 });
-            }
+            }, $value);
         }
 
         if ($model instanceof HasJsonDataColumnExtract) {
@@ -114,19 +119,29 @@ class JsonDataCast implements CastsAttributes
         foreach ($castsWithRelations as $key) {
             $attributeValue = data_get($attributes, $key);
             $value = !empty($attributeValue) ? json_decode($attributeValue, true) : null;
-            $relations = $model->getJsonDataRelations($key, $value, $attributes);
-            $pathsByRelations = self::getPathsByRelations($relations);
-            foreach ($pathsByRelations as $relation => $paths) {
-                $ids = self::getRelationIds($paths, $value, $relation);
-                data_set(
-                    $idsByRelations,
-                    $relation,
-                    collect(data_get($idsByRelations, $relation, []))
-                        ->merge($ids)
-                        ->unique()
-                        ->toArray()
-                );
+            if (!is_array($value)) {
+                continue;
             }
+            $idsByRelations = self::normalizeJsonDataRelations(
+                $model->getJsonDataRelations($key, $value, $attributes)
+            )
+                ->filter(function ($item) {
+                    return data_get($item, 'sync', true);
+                })
+                ->reduce(function ($idsByRelations, $item) use ($value) {
+                    $relation = $item['relation'];
+                    $paths = $item['path'];
+                    $ids = self::getRelationIds($paths, $value, $relation);
+                    data_set(
+                        $idsByRelations,
+                        $relation,
+                        collect(data_get($idsByRelations, $relation, []))
+                            ->merge($ids)
+                            ->unique()
+                            ->toArray()
+                    );
+                    return $idsByRelations;
+                }, $idsByRelations);
         }
 
         foreach ($idsByRelations as $relation => $ids) {
@@ -149,6 +164,43 @@ class JsonDataCast implements CastsAttributes
         }
     }
 
+    public static function normalizeJsonDataRelations($relations): Collection
+    {
+        $relations = collect($relations)
+            ->map(function ($relation, $path) {
+                return is_string($relation)
+                    ? ['relation' => $relation, 'path' => $path]
+                    : array_merge(['path' => $path], $relation);
+            })
+            ->values()
+            ->reduce(function ($relations, $relation) {
+                $foundKey = $relations->search(function ($existing) use ($relation) {
+                    return $existing['relation'] === $relation['relation'] &&
+                        Arr::except($existing, ['path', 'relation']) ==
+                            Arr::except($relation, ['path', 'relation']);
+                });
+                if ($foundKey !== false) {
+                    $existing = $relations->get($foundKey);
+                    $existing['path'] = collect($existing['path'])
+                        ->merge(
+                            is_array($relation['path']) ? $relation['path'] : [$relation['path']]
+                        )
+                        ->unique()
+                        ->values()
+                        ->toArray();
+                    return $relations->put($foundKey, $existing);
+                }
+                return $relations->push(
+                    array_merge($relation, [
+                        'path' => is_array($relation['path'])
+                            ? $relation['path']
+                            : [$relation['path']],
+                    ])
+                );
+            }, collect());
+        return $relations;
+    }
+
     protected static function getRelationIds($paths, array $data, $relation)
     {
         $ids = Data::matchingPaths($paths, $data)
@@ -163,21 +215,6 @@ class JsonDataCast implements CastsAttributes
             ->toArray();
 
         return $ids;
-    }
-
-    protected static function getPathsByRelations($relations)
-    {
-        return collect($relations)->reduce(function ($map, $relation, $path) {
-            data_set(
-                $map,
-                $relation,
-                collect(data_get($map, $relation, []))
-                    ->push($path)
-                    ->unique()
-                    ->toArray()
-            );
-            return $map;
-        }, []);
     }
 
     protected static function getPathFromItem($item, $pathPrefix): ?string
