@@ -42,7 +42,12 @@ class JsonDataCast implements CastsAttributes
                     $itemPath
                 ) use ($relation, $model) {
                     $id = self::getIdFromPath($itemPath, $relation);
-                    $item = $model->{$relation}->find($id);
+                    $relationClass = $model->{$relation}();
+                    if ($relationClass instanceof BelongsTo) {
+                        $item = $model->{$relation};
+                    } else {
+                        $item = $model->{$relation}->find($id);
+                    }
                     data_set($newValue, $path, $item);
                     return $newValue;
                 });
@@ -177,7 +182,7 @@ class JsonDataCast implements CastsAttributes
                 $foundKey = $relations->search(function ($existing) use ($relation) {
                     return $existing['relation'] === $relation['relation'] &&
                         Arr::except($existing, ['path', 'relation']) ==
-                            Arr::except($relation, ['path', 'relation']);
+                        Arr::except($relation, ['path', 'relation']);
                 });
                 if ($foundKey !== false) {
                     $existing = $relations->get($foundKey);
