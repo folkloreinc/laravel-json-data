@@ -167,6 +167,10 @@ class JsonDataCast implements CastsAttributes
                     ]);
             }
         }
+
+        if (count($idsByRelations) > 0) {
+            $model->refresh();
+        }
     }
 
     public static function normalizeJsonDataRelations($relations): Collection
