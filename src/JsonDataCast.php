@@ -157,7 +157,12 @@ class JsonDataCast implements CastsAttributes
                 $relationClass->associate($ids[0]);
             } elseif ($relationClass instanceof BelongsTo && sizeof($ids) === 0) {
                 $relationClass->dissociate();
+            } elseif ($relationClass instanceof HasOneOrMany && sizeof($ids) === 0) {
+                $relationClass->delete();
             } elseif ($relationClass instanceof HasOneOrMany && sizeof($ids) > 0) {
+                $relationClass
+                    ->whereNotIn('id', $ids)
+                    ->delete();
                 $relationClass
                     ->getRelated()
                     ->newQuery()
@@ -168,9 +173,7 @@ class JsonDataCast implements CastsAttributes
             }
         }
 
-        if (count($idsByRelations) > 0) {
-            $model->refresh();
-        }
+        return $$idsByRelations;
     }
 
     public static function normalizeJsonDataRelations($relations): Collection
