@@ -157,12 +157,7 @@ class JsonDataCast implements CastsAttributes
                 $relationClass->associate($ids[0]);
             } elseif ($relationClass instanceof BelongsTo && sizeof($ids) === 0) {
                 $relationClass->dissociate();
-            } elseif ($relationClass instanceof HasOneOrMany && sizeof($ids) === 0) {
-                $relationClass->delete();
             } elseif ($relationClass instanceof HasOneOrMany && sizeof($ids) > 0) {
-                $relationClass
-                    ->whereNotIn('id', $ids)
-                    ->delete();
                 $relationClass
                     ->getRelated()
                     ->newQuery()
