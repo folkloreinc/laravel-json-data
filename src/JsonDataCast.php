@@ -173,7 +173,7 @@ class JsonDataCast implements CastsAttributes
             }
         }
 
-        return $$idsByRelations;
+        return $idsByRelations;
     }
 
     public static function normalizeJsonDataRelations($relations): Collection
