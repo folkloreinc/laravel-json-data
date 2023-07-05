@@ -17,6 +17,15 @@ class Data
         $data);
     }
 
+    public static function setPaths($data, $paths, $set)
+    {
+        return self::reducePaths($paths, $data, function ($value, $path, $pathValue) use ($set) {
+            $newValue = $set instanceof Closure ? $set($pathValue, $path, $value) : $set;
+            data_set($value, $path, $newValue);
+            return $value;
+        });
+    }
+
     public static function matchingPaths($paths, ?array $data): Collection
     {
         $pathPatterns = collect($paths)->map(function ($path) {
