@@ -4,6 +4,7 @@ namespace Folklore\Support;
 
 use Illuminate\Support\Collection;
 use Closure;
+use Illuminate\Contracts\Support\Arrayable;
 
 class Data
 {
@@ -57,6 +58,9 @@ class Data
             return $results;
         }
         foreach ($array as $key => $value) {
+            if ($value instanceof Arrayable) {
+                $value = $value->toArray();
+            }
             // prettier-ignore
             if ((is_array($value) && !empty($value)) ||
                 ($value instanceof Collection && $value->count() > 0)
