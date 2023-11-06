@@ -36,17 +36,21 @@ class JsonDataCast implements CastsAttributes
             )->reduce(function ($value, $item) use ($model) {
                 $relation = $item['relation'];
                 $paths = $item['path'];
+                $lazy = data_get($item, 'lazy', false);
                 return Data::reducePaths($paths, $value, function (
                     $newValue,
                     $path,
                     $itemPath
-                ) use ($relation, $model) {
+                ) use ($relation, $model, $lazy) {
                     $id = self::getIdFromPath($itemPath, $relation);
                     $relationClass = $model->{$relation}();
                     if ($relationClass instanceof BelongsTo) {
                         $item = $model->{$relation};
                     } else {
-                        $item = $model->{$relation}->find($id);
+                        $item =
+                            !$lazy || $model->relationLoaded($relation)
+                                ? $model->{$relation}->find($id)
+                                : null;
                     }
                     data_set($newValue, $path, $item);
                     return $newValue;
@@ -176,7 +180,7 @@ class JsonDataCast implements CastsAttributes
         $relations = collect($relations)
             ->map(function ($relation, $path) {
                 return is_string($relation)
-                    ? ['relation' => $relation, 'path' => $path]
+                    ? ['relation' => $relation, 'path' => $path, 'lazy' => false]
                     : array_merge(['path' => $path], $relation);
             })
             ->values()
@@ -184,7 +188,7 @@ class JsonDataCast implements CastsAttributes
                 $foundKey = $relations->search(function ($existing) use ($relation) {
                     return $existing['relation'] === $relation['relation'] &&
                         Arr::except($existing, ['path', 'relation']) ==
-                        Arr::except($relation, ['path', 'relation']);
+                            Arr::except($relation, ['path', 'relation']);
                 });
                 if ($foundKey !== false) {
                     $existing = $relations->get($foundKey);
