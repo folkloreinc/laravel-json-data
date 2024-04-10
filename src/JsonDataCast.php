@@ -239,6 +239,9 @@ class JsonDataCast implements CastsAttributes
 
     protected static function getIdFromPath($path, $pathPrefix): ?string
     {
+        if (empty($path)) {
+            return null;
+        }
         if (
             preg_match('/^' . preg_quote($pathPrefix . '://', '/') . '(.*)$/', $path, $matches) ===
             1
