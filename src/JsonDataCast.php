@@ -43,7 +43,7 @@ class JsonDataCast implements CastsAttributes
                     $itemPath
                 ) use ($relation, $model, $lazy) {
                     if (!is_string($itemPath)) {
-                        return $itemPath;
+                        return $newValue;
                     }
                     $id = self::getIdFromPath($itemPath, $relation);
                     $relationClass = $model->{$relation}();
