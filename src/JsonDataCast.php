@@ -84,7 +84,7 @@ class JsonDataCast implements CastsAttributes
                 return Data::reducePaths($paths, $value, function ($newValue, $path, $item) use (
                     $relation
                 ) {
-                    if (array_is_list($item)) {
+                    if (is_array($item) && array_is_list($item)) {
                         return $newValue;
                     }
                     $itemPath = self::getPathFromItem($item, $relation);
