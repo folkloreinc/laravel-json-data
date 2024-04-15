@@ -42,6 +42,9 @@ class JsonDataCast implements CastsAttributes
                     $path,
                     $itemPath
                 ) use ($relation, $model, $lazy) {
+                    if (!is_string($itemPath)) {
+                        return $itemPath;
+                    }
                     $id = self::getIdFromPath($itemPath, $relation);
                     $relationClass = $model->{$relation}();
                     if ($relationClass instanceof BelongsTo) {
@@ -81,7 +84,11 @@ class JsonDataCast implements CastsAttributes
                 return Data::reducePaths($paths, $value, function ($newValue, $path, $item) use (
                     $relation
                 ) {
-                    data_set($newValue, $path, self::getPathFromItem($item, $relation));
+                    if (array_is_list($item)) {
+                        return $newValue;
+                    }
+                    $itemPath = self::getPathFromItem($item, $relation);
+                    data_set($newValue, $path, $itemPath);
                     return $newValue;
                 });
             }, $value);
@@ -240,8 +247,9 @@ class JsonDataCast implements CastsAttributes
     protected static function getIdFromPath($path, $pathPrefix): ?string
     {
         if (
+            is_string($path) &&
             preg_match('/^' . preg_quote($pathPrefix . '://', '/') . '(.*)$/', $path, $matches) ===
-            1
+                1
         ) {
             return $matches[1];
         }
@@ -252,8 +260,8 @@ class JsonDataCast implements CastsAttributes
     {
         if (is_numeric($item) || is_string($item)) {
             return $item;
-        } elseif (is_array($item)) {
-            return data_get($item, 'id');
+        } elseif (is_array($item) && isset($item['id'])) {
+            return $item['id'];
         } elseif ($item instanceof Model) {
             return $item->getKey();
         } elseif ($item instanceof Resource) {
