@@ -8,6 +8,8 @@ use Folklore\Support\Data;
 use Folklore\Contracts\Resources\Resource;
 use Folklore\Contracts\Eloquent\HasJsonDataRelations;
 use Folklore\Contracts\Eloquent\HasJsonDataColumnExtract;
+use Illuminate\Contracts\Database\Eloquent\SerializesCastableAttributes;
+use Illuminate\Database\Eloquent\Casts\ArrayObject;
 use ReflectionClass;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -15,7 +17,7 @@ use Illuminate\Database\Eloquent\Relations\HasOneOrMany;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Arr;
 
-class JsonDataCast implements CastsAttributes
+class JsonDataCast implements CastsAttributes, SerializesCastableAttributes
 {
     /**
      * Cast the given value.
@@ -61,7 +63,7 @@ class JsonDataCast implements CastsAttributes
             }, $value);
         }
 
-        return $value;
+        return is_array($value) ? new ArrayObject($value, ArrayObject::ARRAY_AS_PROPS) : $value;
     }
 
     /**
@@ -107,6 +109,11 @@ class JsonDataCast implements CastsAttributes
         }
 
         return !is_null($value) ? json_encode($value) : null;
+    }
+
+    public function serialize($model, string $key, $value, array $attributes)
+    {
+        return $value->getArrayCopy();
     }
 
     public static function syncRelations($model)
