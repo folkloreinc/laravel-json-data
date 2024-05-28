@@ -8,8 +8,6 @@ use Folklore\Support\Data;
 use Folklore\Contracts\Resources\Resource;
 use Folklore\Contracts\Eloquent\HasJsonDataRelations;
 use Folklore\Contracts\Eloquent\HasJsonDataColumnExtract;
-use Illuminate\Contracts\Database\Eloquent\SerializesCastableAttributes;
-use Illuminate\Database\Eloquent\Casts\ArrayObject;
 use ReflectionClass;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -17,7 +15,7 @@ use Illuminate\Database\Eloquent\Relations\HasOneOrMany;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Arr;
 
-class JsonDataCast implements CastsAttributes, SerializesCastableAttributes
+class JsonDataCast implements CastsAttributes
 {
     /**
      * Cast the given value.
@@ -63,7 +61,7 @@ class JsonDataCast implements CastsAttributes, SerializesCastableAttributes
             }, $value);
         }
 
-        return is_array($value) ? new ArrayObject($value, ArrayObject::ARRAY_AS_PROPS) : $value;
+        return $value;
     }
 
     /**
@@ -109,11 +107,6 @@ class JsonDataCast implements CastsAttributes, SerializesCastableAttributes
         }
 
         return !is_null($value) ? json_encode($value) : null;
-    }
-
-    public function serialize($model, string $key, $value, array $attributes)
-    {
-        return $value->getArrayCopy();
     }
 
     public static function syncRelations($model)
@@ -226,7 +219,7 @@ class JsonDataCast implements CastsAttributes, SerializesCastableAttributes
         return $relations;
     }
 
-    protected static function getRelationIds($paths, $data, $relation)
+    protected static function getRelationIds($paths, array $data, $relation)
     {
         $ids = Data::matchingPaths($paths, $data)
             ->map(function ($path) use ($data, $relation) {
