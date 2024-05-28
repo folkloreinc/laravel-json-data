@@ -8,7 +8,7 @@ use Illuminate\Contracts\Support\Arrayable;
 
 class Data
 {
-    public static function reducePaths($paths, ?array $data, Closure $reducer): array
+    public static function reducePaths($paths, $data, Closure $reducer): array
     {
         return (array) self::matchingPaths($paths, $data)->reduce(function ($newData, $path) use (
             $reducer
@@ -27,7 +27,7 @@ class Data
         });
     }
 
-    public static function matchingPaths($paths, ?array $data): Collection
+    public static function matchingPaths($paths, $data): Collection
     {
         $pathPatterns = collect($paths)->map(function ($path) {
             return self::getPathPattern($path);

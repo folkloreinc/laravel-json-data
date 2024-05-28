@@ -226,7 +226,7 @@ class JsonDataCast implements CastsAttributes, SerializesCastableAttributes
         return $relations;
     }
 
-    protected static function getRelationIds($paths, array $data, $relation)
+    protected static function getRelationIds($paths, $data, $relation)
     {
         $ids = Data::matchingPaths($paths, $data)
             ->map(function ($path) use ($data, $relation) {
