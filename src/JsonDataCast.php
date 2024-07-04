@@ -12,6 +12,7 @@ use ReflectionClass;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasOneOrMany;
+use Illuminate\Database\Eloquent\Relations\MorphOneOrMany;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Arr;
 
@@ -138,9 +139,10 @@ class JsonDataCast implements CastsAttributes
             if (!is_array($value)) {
                 continue;
             }
-            $idsByRelations = self::normalizeJsonDataRelations(
+            $normalizedRelations = self::normalizeJsonDataRelations(
                 $model->getJsonDataRelations($key, $value, $attributes)
-            )
+            );
+            $idsByRelations = $normalizedRelations
                 ->filter(function ($item) {
                     return data_get($item, 'sync', true);
                 })
@@ -162,12 +164,28 @@ class JsonDataCast implements CastsAttributes
 
         foreach ($idsByRelations as $relation => $ids) {
             $relationClass = $model->{$relation}();
+            $relation = $normalizedRelations->first(function ($item) use ($relation) {
+                return $item['relation'] === $relation;
+            });
+            $delete = data_get($relation, 'delete', false);
+            if ($delete) {
+                $relationClass->whereNotIn('id', $ids)->delete();
+            }
             if ($relationClass instanceof BelongsToMany) {
                 $relationClass->sync($ids);
             } elseif ($relationClass instanceof BelongsTo && sizeof($ids) > 0) {
                 $relationClass->associate($ids[0]);
             } elseif ($relationClass instanceof BelongsTo && sizeof($ids) === 0) {
                 $relationClass->dissociate();
+            } elseif ($relationClass instanceof MorphOneOrMany && sizeof($ids) > 0) {
+                $relationClass
+                    ->getRelated()
+                    ->newQuery()
+                    ->whereIn('id', $ids)
+                    ->update([
+                        $relationClass->getMorphType() => $relationClass->getMorphClass(),
+                        $relationClass->getForeignKeyName() => $relationClass->getParentKey(),
+                    ]);
             } elseif ($relationClass instanceof HasOneOrMany && sizeof($ids) > 0) {
                 $relationClass
                     ->getRelated()
