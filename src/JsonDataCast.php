@@ -171,7 +171,9 @@ class JsonDataCast implements CastsAttributes
             if ($delete) {
                 $relationClass->whereNotIn('id', $ids)->delete();
             }
-            if ($relationClass instanceof BelongsToMany) {
+            if (isset($relation['sync'])) {
+                $relation['sync']($relationClass, $ids, $relation);
+            } else if ($relationClass instanceof BelongsToMany) {
                 $relationClass->sync($ids);
             } elseif ($relationClass instanceof BelongsTo && sizeof($ids) > 0) {
                 $relationClass->associate($ids[0]);
