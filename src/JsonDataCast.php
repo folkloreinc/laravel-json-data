@@ -35,18 +35,23 @@ class JsonDataCast implements CastsAttributes
             $value = self::normalizeJsonDataRelations(
                 $model->getJsonDataRelations($key, $value, $attributes)
             )->reduce(function ($value, $item) use ($model) {
-                $relation = $item['relation'];
                 $paths = $item['path'];
                 $lazy = data_get($item, 'lazy', false);
                 return Data::reducePaths($paths, $value, function (
                     $newValue,
                     $path,
                     $itemPath
-                ) use ($relation, $model, $lazy) {
+                ) use ($model, $lazy) {
                     if (!is_string($itemPath)) {
                         return $newValue;
                     }
-                    $id = self::getIdFromPath($itemPath, $relation);
+                    list($relation, $id) = self::getRelationAndIdFromPath($itemPath) ?? [
+                        null,
+                        null,
+                    ];
+                    if (empty($relation) || empty($id)) {
+                        return $newValue;
+                    }
                     $relationClass = $model->{$relation}();
                     if ($relationClass instanceof BelongsTo) {
                         $item = $model->{$relation};
@@ -56,6 +61,7 @@ class JsonDataCast implements CastsAttributes
                                 ? $model->{$relation}->find($id)
                                 : null;
                     }
+
                     data_set($newValue, $path, $item);
                     return $newValue;
                 });
@@ -88,7 +94,10 @@ class JsonDataCast implements CastsAttributes
                     if (is_array($item) && array_is_list($item)) {
                         return $newValue;
                     }
-                    $itemPath = self::getPathFromItem($item, $relation);
+                    $relationName = is_callable($relation)
+                        ? call_user_func($relation, $item, $path)
+                        : $relation;
+                    $itemPath = self::getPathFromItem($item, $relationName);
                     data_set($newValue, $path, $itemPath);
                     return $newValue;
                 });
@@ -131,7 +140,7 @@ class JsonDataCast implements CastsAttributes
             ->keys()
             ->values();
 
-        $idsByRelations = [];
+        $relationsMap = [];
         $attributes = $model->getAttributes();
         foreach ($castsWithRelations as $key) {
             $attributeValue = data_get($attributes, $key);
@@ -142,38 +151,47 @@ class JsonDataCast implements CastsAttributes
             $normalizedRelations = self::normalizeJsonDataRelations(
                 $model->getJsonDataRelations($key, $value, $attributes)
             );
-            $idsByRelations = $normalizedRelations
+            $relationsMap = $normalizedRelations
                 ->filter(function ($item) {
                     return data_get($item, 'sync', true);
                 })
-                ->reduce(function ($idsByRelations, $item) use ($value) {
-                    $relation = $item['relation'];
+                ->reduce(function ($relationsMap, $item) use ($value) {
+                    $relationName = is_callable($item['relation'])
+                        ? call_user_func($item['relation'], null, null)
+                        : $item['relation'];
+                    if (!isset($relationsMap[$relationName])) {
+                        $relationsMap[$relationName] = [
+                            'relation' => $item,
+                            'ids' => [],
+                        ];
+                    }
                     $paths = $item['path'];
-                    $ids = self::getRelationIds($paths, $value, $relation);
-                    data_set(
-                        $idsByRelations,
-                        $relation,
-                        collect(data_get($idsByRelations, $relation, []))
-                            ->merge($ids)
-                            ->unique()
-                            ->toArray()
-                    );
-                    return $idsByRelations;
-                }, $idsByRelations);
+                    $map = self::getRelationsAndsIdsFromPaths($paths, $value);
+                    foreach ($map as $relation => $ids) {
+                        $relationsMap[$relation] = [
+                            'relation' => $item,
+                            'ids' => collect(data_get($relationsMap, $relation . '.ids', []))
+                                ->merge($ids)
+                                ->unique()
+                                ->values()
+                                ->toArray(),
+                        ];
+                    }
+                    return $relationsMap;
+                }, $relationsMap);
         }
 
-        foreach ($idsByRelations as $relation => $ids) {
-            $relationClass = $model->{$relation}();
-            $relation = $normalizedRelations->first(function ($item) use ($relation) {
-                return $item['relation'] === $relation;
-            });
+        foreach ($relationsMap as $relationName => $item) {
+            $relationClass = $model->{$relationName}();
+            $ids = $item['ids'];
+            $relation = $item['relation'];
             $delete = data_get($relation, 'delete', false);
             if ($delete) {
                 $relationClass->whereNotIn('id', $ids)->delete();
             }
             if (isset($relation['sync'])) {
                 $relation['sync']($relationClass, $ids, $relation);
-            } else if ($relationClass instanceof BelongsToMany) {
+            } elseif ($relationClass instanceof BelongsToMany) {
                 $relationClass->sync($ids);
             } elseif ($relationClass instanceof BelongsTo && sizeof($ids) > 0) {
                 $relationClass->associate($ids[0]);
@@ -199,7 +217,7 @@ class JsonDataCast implements CastsAttributes
             }
         }
 
-        return $idsByRelations;
+        return $relationsMap;
     }
 
     public static function normalizeJsonDataRelations($relations): Collection
@@ -239,18 +257,21 @@ class JsonDataCast implements CastsAttributes
         return $relations;
     }
 
-    protected static function getRelationIds($paths, array $data, $relation)
+    protected static function getRelationsAndsIdsFromPaths($paths, array $data)
     {
-        $ids = Data::matchingPaths($paths, $data)
-            ->map(function ($path) use ($data, $relation) {
-                return self::getIdFromPath(data_get($data, $path), $relation);
-            })
-            ->filter(function ($id) {
-                return !is_null($id);
-            })
-            ->unique()
-            ->values()
-            ->toArray();
+        $ids = Data::matchingPaths($paths, $data)->reduce(function ($map, $path) use ($data) {
+            $itemPath = data_get($data, $path);
+            list($relation, $id) = self::getRelationAndIdFromPath($itemPath) ?? [null, null];
+            return !empty($relation) && !empty($id)
+                ? array_merge($map, [
+                    $relation => collect(data_get($map, $relation, []))
+                        ->push($id)
+                        ->unique()
+                        ->values()
+                        ->toArray(),
+                ])
+                : $map;
+        }, []);
 
         return $ids;
     }
@@ -264,17 +285,13 @@ class JsonDataCast implements CastsAttributes
         return null;
     }
 
-    protected static function getIdFromPath($path, $pathPrefix): ?string
+    protected static function getRelationAndIdFromPath($path): ?array
     {
         if (empty($path)) {
             return null;
         }
-        if (
-            is_string($path) &&
-            preg_match('/^' . preg_quote($pathPrefix . '://', '/') . '(.*)$/', $path, $matches) ===
-                1
-        ) {
-            return $matches[1];
+        if (is_string($path) && preg_match('/^([^:]+):\/\/(.*)$/', $path, $matches) === 1) {
+            return [$matches[1], $matches[2]];
         }
         return null;
     }
