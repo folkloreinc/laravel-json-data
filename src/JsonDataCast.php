@@ -5,7 +5,7 @@ namespace Folklore\Eloquent;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
 use Illuminate\Database\Eloquent\Model;
 use Folklore\Support\Data;
-use Folklore\Contracts\Resources\Resource;
+use Folklore\Contracts\Entities\Entity;
 use Folklore\Contracts\Eloquent\HasJsonDataRelations;
 use Folklore\Contracts\Eloquent\HasJsonDataColumnExtract;
 use ReflectionClass;
@@ -278,7 +278,7 @@ class JsonDataCast implements CastsAttributes
 
     protected static function getPathFromItem($item, $pathPrefix): ?string
     {
-        $id = self::getIdFromItem($item);
+        $id = to_id($item);
         if (!empty($id)) {
             return $pathPrefix . '://' . $id;
         }
@@ -292,20 +292,6 @@ class JsonDataCast implements CastsAttributes
         }
         if (is_string($path) && preg_match('/^([^:]+):\/\/(.*)$/', $path, $matches) === 1) {
             return [$matches[1], $matches[2]];
-        }
-        return null;
-    }
-
-    protected static function getIdFromItem($item)
-    {
-        if (is_numeric($item) || is_string($item)) {
-            return $item;
-        } elseif (is_array($item) && isset($item['id'])) {
-            return $item['id'];
-        } elseif ($item instanceof Model) {
-            return $item->getKey();
-        } elseif ($item instanceof Resource) {
-            return $item->id();
         }
         return null;
     }
