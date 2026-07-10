@@ -44,12 +44,18 @@ class JsonDataCast implements CastsAttributes
                     if (
                         isset($relation['skip']) &&
                         is_callable($relation['skip']) &&
-                        call_user_func($relation['skip'], $item, $path, 'get')
+                        call_user_func($relation['skip'], $item, $path, 'get', $model, $relation)
                     ) {
                         return $newValue;
                     }
                     if (isset($relation['get']) && is_callable($relation['get'])) {
-                        $newItem = call_user_func($relation['get'], $item, $path);
+                        $newItem = call_user_func(
+                            $relation['get'],
+                            $item,
+                            $path,
+                            $model,
+                            $relation
+                        );
                         data_set($newValue, $path, $newItem);
                         return $newValue;
                     }
@@ -94,16 +100,16 @@ class JsonDataCast implements CastsAttributes
         if ($model instanceof HasJsonDataRelations) {
             $value = self::normalizeJsonDataRelations(
                 $model->getJsonDataRelations($key, $value, $attributes)
-            )->reduce(function ($value, $relation) {
+            )->reduce(function ($value, $relation) use ($model) {
                 return Data::reducePaths($relation['path'], $value, function (
                     $newValue,
                     $path,
                     $item
-                ) use ($relation) {
+                ) use ($model, $relation) {
                     if (
                         isset($relation['skip']) &&
                         is_callable($relation['skip']) &&
-                        call_user_func($relation['skip'], $item, $path, 'set')
+                        call_user_func($relation['skip'], $item, $path, 'set', $model, $relation)
                     ) {
                         return $newValue;
                     }
@@ -111,11 +117,11 @@ class JsonDataCast implements CastsAttributes
                         return $newValue;
                     }
                     $relationName = is_callable($relation['relation'])
-                        ? call_user_func($relation['relation'], $item, $path)
+                        ? call_user_func($relation['relation'], $item, $path, $model, $relation)
                         : $relation['relation'];
                     $newItem =
                         isset($relation['set']) && is_callable($relation['set'])
-                            ? call_user_func($relation['set'], $item, $path, $relationName)
+                            ? call_user_func($relation['set'], $item, $path, $model, $relation, $relationName)
                             : self::getPathFromItem($item, $relationName);
                     data_set($newValue, $path, $newItem);
                     return $newValue;
@@ -171,25 +177,25 @@ class JsonDataCast implements CastsAttributes
                 $model->getJsonDataRelations($key, $value, $attributes)
             );
             $relationsMap = $normalizedRelations
-                ->filter(function ($item) {
-                    return data_get($item, 'sync', true);
+                ->filter(function ($relation) {
+                    return data_get($relation, 'sync', true);
                 })
-                ->reduce(function ($relationsMap, $item) use ($value) {
-                    $relationName = is_callable($item['relation'])
-                        ? call_user_func($item['relation'], null, null)
-                        : $item['relation'];
+                ->reduce(function ($relationsMap, $relation) use ($model, $value) {
+                    $relationName = is_callable($relation['relation'])
+                        ? call_user_func($relation['relation'], null, null, $model, $relation)
+                        : $relation['relation'];
                     if (!isset($relationsMap[$relationName])) {
                         $relationsMap[$relationName] = [
-                            'relation' => $item,
+                            'relation' => $relation,
                             'ids' => [],
                         ];
                     }
-                    $paths = $item['path'];
+                    $paths = $relation['path'];
                     $map = self::getRelationsAndsIdsFromPaths($paths, $value);
-                    foreach ($map as $relation => $ids) {
-                        $relationsMap[$relation] = [
-                            'relation' => $item,
-                            'ids' => collect(data_get($relationsMap, $relation . '.ids', []))
+                    foreach ($map as $relationName => $ids) {
+                        $relationsMap[$relationName] = [
+                            'relation' => $relation,
+                            'ids' => collect(data_get($relationsMap, $relationName . '.ids', []))
                                 ->merge($ids)
                                 ->unique()
                                 ->values()
@@ -239,13 +245,13 @@ class JsonDataCast implements CastsAttributes
         return $relationsMap;
     }
 
-    public static function normalizeJsonDataRelations($relations): Collection
+    public static function normalizeJsonDataRelations(array|Collection $relations): Collection
     {
         $relations = collect($relations)
             ->map(function ($relation, $path) {
                 return is_string($relation)
                     ? ['relation' => $relation, 'path' => $path, 'lazy' => false]
-                    : array_merge(['path' => $path], $relation);
+                    : array_merge(['path' => $path], (array) $relation);
             })
             ->values()
             ->reduce(function ($relations, $relation) {
