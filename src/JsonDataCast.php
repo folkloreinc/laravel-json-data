@@ -50,7 +50,11 @@ class JsonDataCast implements CastsAttributes
                     }
                     $getter =
                         data_get($relation, 'get') ??
-                        data_get(static::$macros, 'get:' . $relation['relation']);
+                        (data_get(
+                            static::$macros,
+                            get_class($model) . ':' . $relation['relation'] . ':get'
+                        ) ??
+                            data_get(static::$macros, $relation['relation'] . ':get'));
                     if (isset($getter)) {
                         $newItem = $getter($item, $path, $model, $relation);
                         data_set($newValue, $path, $newItem);
@@ -118,7 +122,11 @@ class JsonDataCast implements CastsAttributes
                         : $relation['relation'];
                     $setter =
                         data_get($relation, 'set') ??
-                        data_get(static::$macros, 'set:' . $relationName);
+                        (data_get(
+                            static::$macros,
+                            get_class($model) . ':' . $relationName . ':set'
+                        ) ??
+                            data_get(static::$macros, $relationName . ':set'));
                     if (isset($setter)) {
                         $newItem = $setter($item, $path, $model, $relation, $relationName);
                         data_set($newValue, $path, $newItem);
