@@ -3,9 +3,7 @@
 namespace Folklore\Eloquent;
 
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
-use Illuminate\Database\Eloquent\Model;
 use Folklore\Support\Data;
-use Folklore\Contracts\Entities\Entity;
 use Folklore\Contracts\Eloquent\HasJsonDataRelations;
 use Folklore\Contracts\Eloquent\HasJsonDataColumnExtract;
 use ReflectionClass;
@@ -15,9 +13,12 @@ use Illuminate\Database\Eloquent\Relations\HasOneOrMany;
 use Illuminate\Database\Eloquent\Relations\MorphOneOrMany;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Traits\Macroable;
 
 class JsonDataCast implements CastsAttributes
 {
+    use Macroable;
+
     /**
      * Cast the given value.
      *
