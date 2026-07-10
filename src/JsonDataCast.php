@@ -120,6 +120,16 @@ class JsonDataCast implements CastsAttributes
                     $relationName = is_callable($relation['relation'])
                         ? call_user_func($relation['relation'], $item, $path, $model, $relation)
                         : $relation['relation'];
+                    $beforeSet =
+                        data_get($relation, 'before_set') ??
+                        (data_get(
+                            static::$macros,
+                            get_class($model) . ':' . $relationName . ':before_set'
+                        ) ??
+                            data_get(static::$macros, $relationName . ':before_set'));
+                    if (isset($beforeSet)) {
+                        $item = $beforeSet($item, $path, $model, $relation, $relationName);
+                    }
                     $setter =
                         data_get($relation, 'set') ??
                         (data_get(
