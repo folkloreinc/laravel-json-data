@@ -48,14 +48,11 @@ class JsonDataCast implements CastsAttributes
                     ) {
                         return $newValue;
                     }
-                    if (isset($relation['get']) && is_callable($relation['get'])) {
-                        $newItem = call_user_func(
-                            $relation['get'],
-                            $item,
-                            $path,
-                            $model,
-                            $relation
-                        );
+                    $getter =
+                        data_get($relation, 'get') ??
+                        data_get(static::$macros, 'get:' . $relation['relation']);
+                    if (isset($getter)) {
+                        $newItem = $getter($item, $path, $model, $relation);
                         data_set($newValue, $path, $newItem);
                         return $newValue;
                     }
@@ -119,10 +116,15 @@ class JsonDataCast implements CastsAttributes
                     $relationName = is_callable($relation['relation'])
                         ? call_user_func($relation['relation'], $item, $path, $model, $relation)
                         : $relation['relation'];
-                    $newItem =
-                        isset($relation['set']) && is_callable($relation['set'])
-                            ? call_user_func($relation['set'], $item, $path, $model, $relation, $relationName)
-                            : self::getPathFromItem($item, $relationName);
+                    $setter =
+                        data_get($relation, 'set') ??
+                        data_get(static::$macros, 'set:' . $relationName);
+                    if (isset($setter)) {
+                        $newItem = $setter($item, $path, $model, $relation, $relationName);
+                        data_set($newValue, $path, $newItem);
+                        return $newValue;
+                    }
+                    $newItem = self::getPathFromItem($item, $relationName);
                     data_set($newValue, $path, $newItem);
                     return $newValue;
                 });
