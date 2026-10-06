@@ -2,18 +2,19 @@
 
 namespace Folklore\Eloquent;
 
-use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
-use Folklore\Support\Data;
-use Folklore\Contracts\Eloquent\HasJsonDataRelations;
 use Folklore\Contracts\Eloquent\HasJsonDataColumnExtract;
-use ReflectionClass;
+use Folklore\Contracts\Eloquent\HasJsonDataRelations;
+use Folklore\Support\Data;
+use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasOneOrMany;
 use Illuminate\Database\Eloquent\Relations\MorphOneOrMany;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Traits\Macroable;
+use ReflectionClass;
 
 class JsonDataCast implements CastsAttributes
 {
@@ -22,7 +23,7 @@ class JsonDataCast implements CastsAttributes
     /**
      * Cast the given value.
      *
-     * @param  \Illuminate\Database\Eloquent\Model  $model
+     * @param  Model  $model
      * @param  string  $key
      * @param  mixed  $value
      * @param  array  $attributes
@@ -30,13 +31,14 @@ class JsonDataCast implements CastsAttributes
      */
     public function get($model, $key, $value, $attributes)
     {
-        $value = !empty($value) ? json_decode($value, true) : null;
+        $value = ! empty($value) ? json_decode($value, true) : null;
 
         if ($model instanceof HasJsonDataRelations) {
             $value = self::normalizeJsonDataRelations(
                 $model->getJsonDataRelations($key, $value, $attributes)
             )->reduce(function ($value, $relation) use ($model) {
                 $paths = $relation['path'];
+
                 return Data::reducePaths($paths, $value, function ($newValue, $path, $item) use (
                     $model,
                     $relation
@@ -55,19 +57,20 @@ class JsonDataCast implements CastsAttributes
                         data_get($relation, 'get') ??
                         (data_get(
                             static::$macros,
-                            get_class($model) . ':' . $relationName . ':get'
+                            get_class($model).':'.$relationName.':get'
                         ) ??
-                            data_get(static::$macros, $relationName . ':get'));
+                            data_get(static::$macros, $relationName.':get'));
                     if (isset($getter)) {
                         $newItem = $getter($item, $path, $model, $relation);
                         data_set($newValue, $path, $newItem);
+
                         return $newValue;
                     }
                     $lazy = data_get($relation, 'lazy', false);
-                    if (!is_string($item)) {
+                    if (! is_string($item)) {
                         return $newValue;
                     }
-                    list($relation, $id) = self::getRelationAndIdFromPath($item) ?? [null, null];
+                    [$relation, $id] = self::getRelationAndIdFromPath($item) ?? [null, null];
                     if (empty($relation) || empty($id)) {
                         return $newValue;
                     }
@@ -76,12 +79,13 @@ class JsonDataCast implements CastsAttributes
                         $newItem = $model->{$relation};
                     } else {
                         $newItem =
-                            !$lazy || $model->relationLoaded($relation)
+                            ! $lazy || $model->relationLoaded($relation)
                                 ? $model->{$relation}->find($id)
                                 : null;
                     }
 
                     data_set($newValue, $path, $newItem);
+
                     return $newValue;
                 });
             }, $value);
@@ -93,7 +97,7 @@ class JsonDataCast implements CastsAttributes
     /**
      * Prepare the given value for storage.
      *
-     * @param  \Illuminate\Database\Eloquent\Model  $model
+     * @param  Model  $model
      * @param  string  $key
      * @param  array  $value
      * @param  array  $attributes
@@ -127,9 +131,9 @@ class JsonDataCast implements CastsAttributes
                         data_get($relation, 'before_set') ??
                         (data_get(
                             static::$macros,
-                            get_class($model) . ':' . $relationName . ':before_set'
+                            get_class($model).':'.$relationName.':before_set'
                         ) ??
-                            data_get(static::$macros, $relationName . ':before_set'));
+                            data_get(static::$macros, $relationName.':before_set'));
                     if (isset($beforeSet)) {
                         $item = $beforeSet($item, $path, $model, $relation, $relationName);
                     }
@@ -137,16 +141,18 @@ class JsonDataCast implements CastsAttributes
                         data_get($relation, 'set') ??
                         (data_get(
                             static::$macros,
-                            get_class($model) . ':' . $relationName . ':set'
+                            get_class($model).':'.$relationName.':set'
                         ) ??
-                            data_get(static::$macros, $relationName . ':set'));
+                            data_get(static::$macros, $relationName.':set'));
                     if (isset($setter)) {
                         $newItem = $setter($item, $path, $model, $relation, $relationName);
                         data_set($newValue, $path, $newItem);
+
                         return $newValue;
                     }
                     $newItem = self::getPathFromItem($item, $relationName);
                     data_set($newValue, $path, $newItem);
+
                     return $newValue;
                 });
             }, $value);
@@ -155,7 +161,7 @@ class JsonDataCast implements CastsAttributes
         if ($model instanceof HasJsonDataColumnExtract) {
             $columnsExtract = $model->getJsonDataColumnExtract($key, $value, $attributes);
             $return = [
-                $key => !is_null($value) ? json_encode($value) : null,
+                $key => ! is_null($value) ? json_encode($value) : null,
             ];
             foreach ($columnsExtract as $path => $column) {
                 $return[$column] = data_get($value, $path);
@@ -164,18 +170,18 @@ class JsonDataCast implements CastsAttributes
             return $return;
         }
 
-        return !is_null($value) ? json_encode($value) : null;
+        return ! is_null($value) ? json_encode($value) : null;
     }
 
     public static function syncRelations($model)
     {
-        if (!($model instanceof HasJsonDataRelations)) {
+        if (! ($model instanceof HasJsonDataRelations)) {
             return;
         }
 
         $castsWithRelations = collect($model->getCasts())
             ->filter(function ($castType) {
-                if (!class_exists($castType)) {
+                if (! class_exists($castType)) {
                     return false;
                 }
                 if ($castType === self::class) {
@@ -183,6 +189,7 @@ class JsonDataCast implements CastsAttributes
                 }
 
                 $reflectionClass = new ReflectionClass($castType);
+
                 return $reflectionClass->isSubclassOf(self::class);
             })
             ->keys()
@@ -192,8 +199,8 @@ class JsonDataCast implements CastsAttributes
         $attributes = $model->getAttributes();
         foreach ($castsWithRelations as $key) {
             $attributeValue = data_get($attributes, $key);
-            $value = !empty($attributeValue) ? json_decode($attributeValue, true) : null;
-            if (!is_array($value)) {
+            $value = ! empty($attributeValue) ? json_decode($attributeValue, true) : null;
+            if (! is_array($value)) {
                 continue;
             }
             $normalizedRelations = self::normalizeJsonDataRelations(
@@ -207,7 +214,7 @@ class JsonDataCast implements CastsAttributes
                     $relationName = is_callable($relation['relation'])
                         ? call_user_func($relation['relation'], null, null, $model, $relation)
                         : $relation['relation'];
-                    if (!isset($relationsMap[$relationName])) {
+                    if (! isset($relationsMap[$relationName])) {
                         $relationsMap[$relationName] = [
                             'relation' => $relation,
                             'ids' => [],
@@ -218,13 +225,14 @@ class JsonDataCast implements CastsAttributes
                     foreach ($map as $relationName => $ids) {
                         $relationsMap[$relationName] = [
                             'relation' => $relation,
-                            'ids' => collect(data_get($relationsMap, $relationName . '.ids', []))
+                            'ids' => collect(data_get($relationsMap, $relationName.'.ids', []))
                                 ->merge($ids)
                                 ->unique()
                                 ->values()
                                 ->toArray(),
                         ];
                     }
+
                     return $relationsMap;
                 }, $relationsMap);
         }
@@ -241,11 +249,11 @@ class JsonDataCast implements CastsAttributes
                 $relation['sync']($relationClass, $ids, $relation);
             } elseif ($relationClass instanceof BelongsToMany) {
                 $relationClass->sync($ids);
-            } elseif ($relationClass instanceof BelongsTo && sizeof($ids) > 0) {
+            } elseif ($relationClass instanceof BelongsTo && count($ids) > 0) {
                 $relationClass->associate($ids[0]);
-            } elseif ($relationClass instanceof BelongsTo && sizeof($ids) === 0) {
+            } elseif ($relationClass instanceof BelongsTo && count($ids) === 0) {
                 $relationClass->dissociate();
-            } elseif ($relationClass instanceof MorphOneOrMany && sizeof($ids) > 0) {
+            } elseif ($relationClass instanceof MorphOneOrMany && count($ids) > 0) {
                 $relationClass
                     ->getRelated()
                     ->newQuery()
@@ -254,7 +262,7 @@ class JsonDataCast implements CastsAttributes
                         $relationClass->getMorphType() => $relationClass->getMorphClass(),
                         $relationClass->getForeignKeyName() => $relationClass->getParentKey(),
                     ]);
-            } elseif ($relationClass instanceof HasOneOrMany && sizeof($ids) > 0) {
+            } elseif ($relationClass instanceof HasOneOrMany && count($ids) > 0) {
                 $relationClass
                     ->getRelated()
                     ->newQuery()
@@ -292,8 +300,10 @@ class JsonDataCast implements CastsAttributes
                         ->unique()
                         ->values()
                         ->toArray();
+
                     return $relations->put($foundKey, $existing);
                 }
+
                 return $relations->push(
                     array_merge($relation, [
                         'path' => is_array($relation['path'])
@@ -302,6 +312,7 @@ class JsonDataCast implements CastsAttributes
                     ])
                 );
             }, collect());
+
         return $relations;
     }
 
@@ -309,8 +320,9 @@ class JsonDataCast implements CastsAttributes
     {
         $ids = Data::matchingPaths($paths, $data)->reduce(function ($map, $path) use ($data) {
             $itemPath = data_get($data, $path);
-            list($relation, $id) = self::getRelationAndIdFromPath($itemPath) ?? [null, null];
-            return !empty($relation) && !empty($id)
+            [$relation, $id] = self::getRelationAndIdFromPath($itemPath) ?? [null, null];
+
+            return ! empty($relation) && ! empty($id)
                 ? array_merge($map, [
                     $relation => collect(data_get($map, $relation, []))
                         ->push($id)
@@ -327,9 +339,10 @@ class JsonDataCast implements CastsAttributes
     public static function getPathFromItem($item, $pathPrefix): ?string
     {
         $id = to_id($item);
-        if (!empty($id)) {
-            return $pathPrefix . '://' . $id;
+        if (! empty($id)) {
+            return $pathPrefix.'://'.$id;
         }
+
         return null;
     }
 
@@ -341,6 +354,7 @@ class JsonDataCast implements CastsAttributes
         if (is_string($path) && preg_match('/^([^:]+):\/\/(.*)$/', $path, $matches) === 1) {
             return [$matches[1], $matches[2]];
         }
+
         return null;
     }
 }

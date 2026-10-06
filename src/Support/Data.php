@@ -2,9 +2,9 @@
 
 namespace Folklore\Support;
 
-use Illuminate\Support\Collection;
 use Closure;
 use Illuminate\Contracts\Support\Arrayable;
+use Illuminate\Support\Collection;
 
 class Data
 {
@@ -15,7 +15,7 @@ class Data
         ) {
             return $reducer($newData, $path, data_get($newData, $path));
         },
-        $data);
+            $data);
     }
 
     public static function setPaths($data, $paths, $set)
@@ -23,6 +23,7 @@ class Data
         return self::reducePaths($paths, $data, function ($value, $path, $pathValue) use ($set) {
             $newValue = $set instanceof Closure ? $set($pathValue, $path, $value) : $set;
             data_set($value, $path, $newValue);
+
             return $value;
         });
     }
@@ -48,7 +49,8 @@ class Data
         $pattern = preg_quote($pattern, '/');
         $pattern = preg_replace('/__full_wildcard__/', '.*?', $pattern);
         $pattern = preg_replace('/__wildcard__/', '[^\.]+', $pattern);
-        return '/^' . $pattern . '$/';
+
+        return '/^'.$pattern.'$/';
     }
 
     public static function dot($array, $prepend = '')
@@ -62,13 +64,13 @@ class Data
                 $value = $value->toArray();
             }
             // prettier-ignore
-            if ((is_array($value) && !empty($value)) ||
+            if ((is_array($value) && ! empty($value)) ||
                 ($value instanceof Collection && $value->count() > 0)
             ) {
-                $results[$prepend . $key] = null;
-                $results = array_merge($results, self::dot($value, $prepend . $key . '.'));
+                $results[$prepend.$key] = null;
+                $results = array_merge($results, self::dot($value, $prepend.$key.'.'));
             } else {
-                $results[$prepend . $key] = $value;
+                $results[$prepend.$key] = $value;
             }
         }
 
