@@ -127,6 +127,10 @@ class JsonDataCast implements CastsAttributes
                     $relationName = is_callable($relation['relation'])
                         ? call_user_func($relation['relation'], $item, $path, $model, $relation)
                         : $relation['relation'];
+                    // Already serialized, for instance data read raw and written back
+                    if (self::isReferenceTo($item, $relationName)) {
+                        return $newValue;
+                    }
                     $beforeSet =
                         data_get($relation, 'before_set') ??
                         (data_get(
@@ -344,6 +348,19 @@ class JsonDataCast implements CastsAttributes
         }
 
         return null;
+    }
+
+    /**
+     * Whether the item is a reference to the relation, as stored.
+     */
+    protected static function isReferenceTo($item, $relationName): bool
+    {
+        if (! is_string($item) || ! is_string($relationName)) {
+            return false;
+        }
+        [$relation] = self::getRelationAndIdFromPath($item) ?? [null];
+
+        return $relation === $relationName;
     }
 
     public static function getRelationAndIdFromPath($path): ?array
