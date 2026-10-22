@@ -38,11 +38,10 @@ class JsonDataCastBugsTest extends JsonDataTestCase
     }
 
     /**
-     * The repository merges the update into the resolved data, where a lazy
-     * relation that isn't loaded reads as null, and writes it back. The
-     * reference should be kept.
+     * Fixed: the repository merged the update into the resolved data, where a
+     * lazy relation that isn't loaded reads as null, and wrote it back.
      */
-    public function test_bug_a_partial_update_rewrites_unresolved_references_as_null()
+    public function test_a_partial_update_keeps_the_references_that_dont_resolve()
     {
         $prize = Prize::create(['handle' => 'grand-prize']);
         $games = $this->app->make(Games::class);
@@ -51,9 +50,23 @@ class JsonDataCastBugsTest extends JsonDataTestCase
 
         $games->update($game->id(), ['title' => ['fr' => 'Le quiz']]);
 
-        // Bug: should still be prizes://{id}
         $this->assertEquals(
-            [['prize' => null, 'quantity' => 1]],
+            [['prize' => 'prizes://'.$prize->id, 'quantity' => 1]],
+            $this->rawData($game->getModel())['prizes'],
+        );
+        $this->assertTrue(Game::with('prizes')->find($game->id())->data['prizes'][0]['prize']->is($prize));
+    }
+
+    public function test_a_partial_update_still_clears_a_reference_it_sets_to_null()
+    {
+        $prize = Prize::create(['handle' => 'grand-prize']);
+        $games = $this->app->make(Games::class);
+        $game = $games->create(['handle' => 'quiz', 'prizes' => [['prize' => $prize, 'quantity' => 1]]]);
+
+        $games->update($game->id(), ['prizes' => [['prize' => null, 'quantity' => 2]]]);
+
+        $this->assertEquals(
+            [['prize' => null, 'quantity' => 2]],
             $this->rawData($game->getModel())['prizes'],
         );
     }
