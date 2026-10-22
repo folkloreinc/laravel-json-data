@@ -2,7 +2,7 @@
 
 Specification of `JsonDataCast` in 2.0. It ships in alpha 1 ([roadmap.md](roadmap.md)). It was designed in [#56](https://github.com/folkloreinc/laravel-folklore/issues/56#issuecomment-6344885526) and is recorded in [decisions 0005 to 0008](decisions/). The 1.x behaviour it starts from is described in [current-state.md](current-state.md#jsondatacast).
 
-Class and method names (`JsonData`, `JsonReference`, `ReferenceHandler`, `ReferenceContext`, `MediaReferences`, `withJsonReferences()`) are proposals until this spec is merged.
+Class and method names are settled in [decisions/0014](decisions/0014-names.md).
 
 ## Goals
 
@@ -115,19 +115,39 @@ The string-keyed static macros of 1.x (`JsonDataCast::macro('medias:get', …)`,
 
 ## Writing
 
-`set()` turns each value at a declared path into a reference:
+Writing happens in two steps: `set()` sorts the values when they are assigned, and the values that need preparing are turned into references when the model is saved ([decisions/0013](decisions/0013-defer-prepare-until-saving.md)).
 
-1. `skip` and the deprecated callables run first, as in 1.x.
+### When a value is assigned
+
+`set()` looks at each value at a declared path:
+
+1. `skip` and the deprecated callables (`before_set`, `set`, macros) run first, in `set()`, as in 1.x.
 2. **A reference is kept as is** when its key is mapped to the relation's related model, or, without a map, when its key is the relation's name. It is never prefixed twice (fixed in 1.1.8, [#62](https://github.com/folkloreinc/laravel-folklore/pull/62)). A reference written by another key of the same model (`medias://12` where the relation now writes `media://`) is kept too: the rewrite command converts it ([below](#rewriting-references)).
-3. Otherwise the handler's `prepare()` turns the value into a model: a model, an entity, a reference, an identifier, or, for media, a file or a URL.
-4. The handler's `allows()` checks that the owner may refer to it. A refusal throws `ReferenceNotAllowed`.
-5. The reference is built with the **write key**: the relation's `key` option, else the first key mapped to the related model (as `getMorphClass()` picks the first morph map entry), else the relation's name. The identifier comes from the key's column.
+3. `null` is written as `null`. A list at a path that isn't a wildcard is left as is, as in 1.x.
+4. **Any other value is pending**: a model, an entity, an identifier, a file, a URL. The cast keeps it on the model, by column and path, and doesn't call the handler yet. In the raw attribute, the path keeps the reference stored before, or `null`, so the raw attribute always holds valid stored data.
 
-A value that can't be prepared throws `InvalidJsonReference` under `enforceMap()`. Without it, the value is written as `null`, as in 1.x, and a deprecation is logged.
+Until the model is saved, reading the column returns pending values as they were assigned.
 
-`null` is written as `null`. A list at a path that isn't a wildcard is left as is, as in 1.x.
+### When the model is saved
 
-**Open:** whether `prepare()` runs in `set()`, as above, or is deferred until the model's `saving` event. Deferring means that a file is not ingested before the save can succeed, and that the owner's attributes (its tenant) are known when the media is created. It needs the cast to keep the pending values on the model and register a `saving` listener, or a trait on the model.
+On the model's `saving` event, for each pending value:
+
+1. The handler's `prepare()` turns it into a model: a model, an entity, a reference, an identifier, or, for media, a file or a URL, which it ingests.
+2. The handler's `allows()` checks that the owner may refer to it. A refusal throws `ReferenceNotAllowed`.
+3. The reference is built with the **write key**: the relation's `key` option, else the first key mapped to the related model (as `getMorphClass()` picks the first morph map entry), else the relation's name. The identifier comes from the key's column. It is written into the raw attribute, before the query runs.
+
+A value that can't be prepared throws `InvalidJsonReference` under `enforceMap()`. Without it, the value is written as `null`, as in 1.x, and a deprecation is logged. An exception thrown while preparing stops the save: nothing is written.
+
+- The cast registers its `saving` listener for a model class the first time a model of that class has a pending value, once per event dispatcher. Models need no trait, so upgraded sites declare nothing.
+- Listeners and observers that the model registers when it boots run first, so the attributes they set (a tenant, an owner) are known to `prepare()`. Attributes set in `creating` are not: it fires after `saving`.
+- A model saved without events (`saveQuietly()`, `withoutEvents()`) doesn't prepare its pending values: their paths keep their stored references, and the values stay pending until the next save with events.
+
+### When the save fails afterwards
+
+`prepare()` can ingest a file, and the save can still fail after `saving`: the query, the sync of relations, or a later listener. The media would then exist without a usage.
+
+- Repositories run `saveData()` in a database transaction (in 1.x, only the `Pages` and `Blocks` repositories did). When it rolls back, the media row created by `Mediatheque::ingest()` rolls back with it, and the mediatheque doesn't run its pipeline, which it dispatches only after the commit. The stored file is left without a media; `mediatheque:prune` deletes orphan files ([laravel-mediatheque 2's roadmap](https://github.com/folkloreinc/laravel-mediatheque/blob/v2.x/docs/roadmap.md), alpha 2).
+- A model saved outside a transaction (`$model->save()` in application code) can leave a media without a usage. Whether the mediatheque prunes media that were never used, through its usage graph, is to be settled with it before alpha 1 ([roadmap.md](roadmap.md#open-questions)).
 
 ### Partial updates
 
@@ -289,6 +309,7 @@ MediaReferences::allowUsing(fn (Media $media, Model $owner) => $media->workspace
 |---|---|---|
 | Key = relation name | Key = registry entry; unmapped keys fall back to the relation of the same name | Fallback kept; off with `enforceMap()` |
 | `relation://id` resolved with `$model->{relation}->find($id)` | Resolved in batches by the key's handler | — |
+| Values turned into references in `set()` | References kept in `set()`; other values prepared on `saving` | The deprecated callables still run in `set()` |
 | `JsonDataCast::macro('{relation}:get')`, `':set'`, `':before_set'`, per model or global | Handlers per key, `using` per path | Macros run, deprecated |
 | `get`, `set`, `before_set` options | Handlers | Run, deprecated |
 | `lazy` | `JsonData::load()`, `withJsonReferences()` | Kept, deprecated |
