@@ -89,10 +89,10 @@ class JsonDataCastBugsTest extends JsonDataTestCase
     }
 
     /**
-     * The sync of a HasMany sets the foreign key of every referenced row, so a
-     * row of another parent moves. It should only resolve rows of this parent.
+     * Fixed: the sync of a HasMany set the foreign key of every referenced
+     * row, so a row of another parent moved.
      */
-    public function test_bug_sync_of_a_has_many_moves_rows_from_another_parent()
+    public function test_sync_of_a_has_many_leaves_the_rows_of_another_parent()
     {
         $first = Contest::create();
         $second = Contest::create();
@@ -102,8 +102,23 @@ class JsonDataCastBugsTest extends JsonDataTestCase
         $second->save();
         JsonDataCast::syncRelations($second);
 
-        // Bug: should still belong to the first contest
-        $this->assertSame($second->id, $prize->fresh()->contest_id);
-        $this->assertSame(0, $first->prizes()->count());
+        $this->assertEquals($first->id, $prize->fresh()->contest_id);
+        $this->assertSame(0, $second->prizes()->count());
+        $this->assertNull(Contest::find($second->id)->data['featured'][0]);
+    }
+
+    public function test_sync_of_a_has_many_attaches_the_rows_without_a_parent()
+    {
+        $contest = Contest::create();
+        $orphan = Prize::create(['handle' => 'grand-prize']);
+        $own = Prize::create(['contest_id' => $contest->id, 'handle' => 'second-prize']);
+
+        $contest->data = ['featured' => [$orphan, $own]];
+        $contest->save();
+        JsonDataCast::syncRelations($contest);
+
+        $this->assertEquals($contest->id, $orphan->fresh()->contest_id);
+        $this->assertEqualsCanonicalizing([$orphan->id, $own->id], $contest->prizes()->pluck('id')->all());
+        $this->assertTrue(Contest::find($contest->id)->data['featured'][0]->is($orphan));
     }
 }

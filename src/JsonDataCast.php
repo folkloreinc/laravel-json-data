@@ -254,10 +254,12 @@ class JsonDataCast implements CastsAttributes
             } elseif ($relationClass instanceof BelongsTo && count($ids) === 0) {
                 $relationClass->dissociate();
             } elseif ($relationClass instanceof MorphOneOrMany && count($ids) > 0) {
+                // Only the rows without a parent: a row of another parent stays there
                 $relationClass
                     ->getRelated()
                     ->newQuery()
                     ->whereIn('id', $ids)
+                    ->whereNull($relationClass->getForeignKeyName())
                     ->update([
                         $relationClass->getMorphType() => $relationClass->getMorphClass(),
                         $relationClass->getForeignKeyName() => $relationClass->getParentKey(),
@@ -267,6 +269,7 @@ class JsonDataCast implements CastsAttributes
                     ->getRelated()
                     ->newQuery()
                     ->whereIn('id', $ids)
+                    ->whereNull($relationClass->getForeignKeyName())
                     ->update([
                         $relationClass->getForeignKeyName() => $relationClass->getParentKey(),
                     ]);
