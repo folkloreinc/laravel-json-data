@@ -175,7 +175,8 @@ class JsonDataCast implements CastsAttributes
 
     public static function syncRelations($model)
     {
-        if (! ($model instanceof HasJsonDataRelations)) {
+        // Only models have casts and relations to sync
+        if (! ($model instanceof HasJsonDataRelations) || ! ($model instanceof Model)) {
             return;
         }
 
