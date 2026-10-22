@@ -127,6 +127,10 @@ class JsonDataCast implements CastsAttributes
                     $relationName = is_callable($relation['relation'])
                         ? call_user_func($relation['relation'], $item, $path, $model, $relation)
                         : $relation['relation'];
+                    // Already serialized, for instance data read raw and written back
+                    if (self::isReferenceTo($item, $relationName)) {
+                        return $newValue;
+                    }
                     $beforeSet =
                         data_get($relation, 'before_set') ??
                         (data_get(
@@ -175,7 +179,8 @@ class JsonDataCast implements CastsAttributes
 
     public static function syncRelations($model)
     {
-        if (! ($model instanceof HasJsonDataRelations)) {
+        // Only models have casts and relations to sync
+        if (! ($model instanceof HasJsonDataRelations) || ! ($model instanceof Model)) {
             return;
         }
 
@@ -251,13 +256,16 @@ class JsonDataCast implements CastsAttributes
                 $relationClass->sync($ids);
             } elseif ($relationClass instanceof BelongsTo && count($ids) > 0) {
                 $relationClass->associate($ids[0]);
+                self::saveForeignKey($model, $relationClass);
             } elseif ($relationClass instanceof BelongsTo && count($ids) === 0) {
                 $relationClass->dissociate();
             } elseif ($relationClass instanceof MorphOneOrMany && count($ids) > 0) {
+                // Only the rows without a parent: a row of another parent stays there
                 $relationClass
                     ->getRelated()
                     ->newQuery()
                     ->whereIn('id', $ids)
+                    ->whereNull($relationClass->getForeignKeyName())
                     ->update([
                         $relationClass->getMorphType() => $relationClass->getMorphClass(),
                         $relationClass->getForeignKeyName() => $relationClass->getParentKey(),
@@ -267,6 +275,7 @@ class JsonDataCast implements CastsAttributes
                     ->getRelated()
                     ->newQuery()
                     ->whereIn('id', $ids)
+                    ->whereNull($relationClass->getForeignKeyName())
                     ->update([
                         $relationClass->getForeignKeyName() => $relationClass->getParentKey(),
                     ]);
@@ -274,6 +283,26 @@ class JsonDataCast implements CastsAttributes
         }
 
         return $relationsMap;
+    }
+
+    /**
+     * Save the foreign key that associate() only sets on the model: the sync
+     * runs after the model is saved, and a refresh would discard it.
+     */
+    protected static function saveForeignKey(Model $model, BelongsTo $relation): void
+    {
+        $foreignKey = $relation->getForeignKeyName();
+        if (! $model->exists || ! $model->isDirty($foreignKey)) {
+            return;
+        }
+
+        $model
+            ->newQueryWithoutScopes()
+            ->whereKey($model->getKey())
+            ->update([$foreignKey => $model->getAttribute($foreignKey)]);
+        $model->syncOriginalAttribute($foreignKey);
+        // associate() with an id leaves the relation loaded as null
+        $model->unsetRelation($relation->getRelationName());
     }
 
     public static function normalizeJsonDataRelations(array|Collection $relations): Collection
@@ -344,6 +373,60 @@ class JsonDataCast implements CastsAttributes
         }
 
         return null;
+    }
+
+    /**
+     * The value of a JSON attribute to merge an update into: the resolved
+     * value, with the stored references that don't resolve put back (a lazy
+     * relation that isn't loaded, a related model that is gone), so that
+     * writing the value back doesn't replace them with null.
+     */
+    public static function getValueWithUnresolvedReferences(Model $model, string $key): mixed
+    {
+        $value = $model->getAttribute($key);
+        $castType = $model->getCasts()[$key] ?? null;
+        if (
+            ! ($model instanceof HasJsonDataRelations) ||
+            ! is_string($castType) ||
+            ! is_a($castType, self::class, true) ||
+            ! is_array($value)
+        ) {
+            return $value;
+        }
+
+        $rawValue = $model->getAttributes()[$key] ?? null;
+        $storedValue = is_string($rawValue) ? json_decode($rawValue, true) : null;
+        if (! is_array($storedValue)) {
+            return $value;
+        }
+
+        $paths = self::normalizeJsonDataRelations(
+            $model->getJsonDataRelations($key, $storedValue, $model->getAttributes())
+        )
+            ->pluck('path')
+            ->flatten()
+            ->all();
+        foreach (Data::matchingPaths($paths, $storedValue) as $path) {
+            $reference = data_get($storedValue, $path);
+            if (! is_null(self::getRelationAndIdFromPath($reference)) && is_null(data_get($value, $path))) {
+                data_set($value, $path, $reference);
+            }
+        }
+
+        return $value;
+    }
+
+    /**
+     * Whether the item is a reference to the relation, as stored.
+     */
+    protected static function isReferenceTo($item, $relationName): bool
+    {
+        if (! is_string($item) || ! is_string($relationName)) {
+            return false;
+        }
+        [$relation] = self::getRelationAndIdFromPath($item) ?? [null];
+
+        return $relation === $relationName;
     }
 
     public static function getRelationAndIdFromPath($path): ?array
