@@ -19,11 +19,10 @@ use Illuminate\Support\Facades\DB;
 class JsonDataCastBugsTest extends JsonDataTestCase
 {
     /**
-     * syncRelations() associates the parent, which only sets the foreign key,
-     * then the repository refreshes the model, which discards it. The parent_id
-     * should be saved.
+     * Fixed: syncRelations() associated the parent, which only set the foreign
+     * key, then the repository refreshed the model, which discarded it.
      */
-    public function test_bug_the_repository_loses_a_belongs_to_reference()
+    public function test_the_repository_saves_a_belongs_to_reference()
     {
         $pages = $this->app->make(Pages::class);
         $parent = $pages->create(['handle' => 'parent', 'title' => ['fr' => 'Parent']]);
@@ -32,9 +31,35 @@ class JsonDataCastBugsTest extends JsonDataTestCase
 
         $model = PageModel::find($child->id());
         $this->assertSame('parent://'.$parent->id(), $this->rawData($model)['parent']);
-        // Bug: should be the parent's id
-        $this->assertNull($model->parent_id);
-        $this->assertNull($model->data['parent']);
+        $this->assertEquals($parent->id(), $model->parent_id);
+        $this->assertTrue($model->data['parent']->is($parent->getModel()));
+    }
+
+    public function test_the_sync_saves_a_belongs_to_reference_without_a_refresh()
+    {
+        $parent = PageModel::create(['handle' => 'parent']);
+        $child = PageModel::create(['handle' => 'child', 'data' => ['parent' => $parent]]);
+
+        JsonDataCast::syncRelations($child);
+
+        $this->assertFalse($child->isDirty('parent_id'));
+        $this->assertEquals($parent->id, $child->parent_id);
+        $this->assertEquals($parent->id, PageModel::find($child->id)->parent_id);
+        $this->assertTrue($child->data['parent']->is($parent));
+    }
+
+    /**
+     * The sync still only dissociates in memory: a parent_id set through its
+     * column, without a reference in the data, is kept.
+     */
+    public function test_a_parent_set_through_its_column_is_kept_without_a_reference()
+    {
+        $pages = $this->app->make(Pages::class);
+        $parent = $pages->create(['handle' => 'parent', 'title' => ['fr' => 'Parent']]);
+
+        $child = $pages->create(['handle' => 'child', 'title' => ['fr' => 'Enfant'], 'parent_id' => $parent->id()]);
+
+        $this->assertEquals($parent->id(), PageModel::find($child->id())->parent_id);
     }
 
     /**
