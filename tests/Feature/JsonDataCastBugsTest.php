@@ -13,8 +13,8 @@ use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Bugs of JsonDataCast on 1.1 (#59). Each test asserts the current behaviour,
- * and says what the right one is: the fix flips the assertions marked "Bug".
+ * Regression tests for the bugs of JsonDataCast fixed in 1.1.8 (#59), and the
+ * behaviours their fixes keep on purpose.
  */
 class JsonDataCastBugsTest extends JsonDataTestCase
 {
