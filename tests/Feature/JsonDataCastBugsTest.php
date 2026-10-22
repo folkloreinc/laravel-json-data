@@ -84,22 +84,55 @@ class JsonDataCastBugsTest extends JsonDataTestCase
     }
 
     /**
-     * to_id() returns strings as they are, so a reference read raw and written
-     * back gets a second prefix and no longer resolves. The sync then attaches
-     * `medias://{id}` as an id: SQLite stores it, MySQL refuses it. The
-     * reference should be kept as is.
+     * Fixed: to_id() returns strings as they are, so a reference read raw and
+     * written back got a second prefix and no longer resolved, and the sync
+     * attached `medias://{id}` as an id, which MySQL refuses.
      */
-    public function test_bug_writing_a_stored_reference_doubles_its_prefix()
+    public function test_writing_a_stored_reference_keeps_it_as_is()
     {
         $media = $this->makeMedia();
 
         $game = new Game;
-        $game->data = ['image' => ['fr' => 'medias://'.$media->id, 'en' => 'https://example.com/image.png']];
+        $game->data = ['image' => ['fr' => 'medias://'.$media->id]];
+        $game->save();
+        JsonDataCast::syncRelations($game);
+
+        $this->assertSame('medias://'.$media->id, $this->rawData($game)['image']['fr']);
+        $this->assertSame([$media->id], $game->medias()->get()->modelKeys());
+        $this->assertTrue(Game::find($game->id)->data['image']['fr']->is($media));
+    }
+
+    public function test_a_before_set_macro_doesnt_receive_a_stored_reference()
+    {
+        $media = $this->makeMedia();
+        $received = [];
+        JsonDataCast::macro('medias:before_set', function ($item) use (&$received) {
+            $received[] = $item;
+
+            return $item;
+        });
+
+        $game = new Game;
+        $game->data = ['image' => ['fr' => 'medias://'.$media->id, 'en' => $media]];
         $game->save();
 
-        // Bug: should be medias://{id}
-        $this->assertSame('medias://medias://'.$media->id, $this->rawData($game)['image']['fr']);
-        $this->assertSame('medias://https://example.com/image.png', $this->rawData($game)['image']['en']);
+        $this->assertCount(1, $received);
+        $this->assertTrue($received[0]->is($media));
+    }
+
+    /**
+     * Another string at a reference path is still taken as an id, and the
+     * sync attaches it: SQLite stores it, MySQL refuses it. 2.0 checks the
+     * references it writes (#56).
+     */
+    public function test_another_string_at_a_reference_path_is_still_taken_as_an_id()
+    {
+        $game = new Game;
+        $game->data = ['image' => ['fr' => 'https://example.com/image.png', 'en' => 'blocks://1']];
+        $game->save();
+
+        $this->assertSame('medias://https://example.com/image.png', $this->rawData($game)['image']['fr']);
+        $this->assertSame('medias://blocks://1', $this->rawData($game)['image']['en']);
 
         if (DB::connection()->getDriverName() === 'mysql') {
             $this->expectException(QueryException::class);
@@ -107,10 +140,9 @@ class JsonDataCastBugsTest extends JsonDataTestCase
         JsonDataCast::syncRelations($game);
 
         $this->assertEqualsCanonicalizing(
-            ['medias://'.$media->id, 'https://example.com/image.png'],
+            ['https://example.com/image.png', 'blocks://1'],
             DB::table($game->medias()->getTable())->pluck('media_id')->all(),
         );
-        $this->assertNull(Game::find($game->id)->data['image']['fr']);
     }
 
     /**
