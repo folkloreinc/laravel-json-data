@@ -251,6 +251,7 @@ class JsonDataCast implements CastsAttributes
                 $relationClass->sync($ids);
             } elseif ($relationClass instanceof BelongsTo && count($ids) > 0) {
                 $relationClass->associate($ids[0]);
+                self::saveForeignKey($model, $relationClass);
             } elseif ($relationClass instanceof BelongsTo && count($ids) === 0) {
                 $relationClass->dissociate();
             } elseif ($relationClass instanceof MorphOneOrMany && count($ids) > 0) {
@@ -274,6 +275,26 @@ class JsonDataCast implements CastsAttributes
         }
 
         return $relationsMap;
+    }
+
+    /**
+     * Save the foreign key that associate() only sets on the model: the sync
+     * runs after the model is saved, and a refresh would discard it.
+     */
+    protected static function saveForeignKey(Model $model, BelongsTo $relation): void
+    {
+        $foreignKey = $relation->getForeignKeyName();
+        if (! $model->exists || ! $model->isDirty($foreignKey)) {
+            return;
+        }
+
+        $model
+            ->newQueryWithoutScopes()
+            ->whereKey($model->getKey())
+            ->update([$foreignKey => $model->getAttribute($foreignKey)]);
+        $model->syncOriginalAttribute($foreignKey);
+        // associate() with an id leaves the relation loaded as null
+        $model->unsetRelation($relation->getRelationName());
     }
 
     public static function normalizeJsonDataRelations(array|Collection $relations): Collection
