@@ -376,6 +376,47 @@ class JsonDataCast implements CastsAttributes
     }
 
     /**
+     * The value of a JSON attribute to merge an update into: the resolved
+     * value, with the stored references that don't resolve put back (a lazy
+     * relation that isn't loaded, a related model that is gone), so that
+     * writing the value back doesn't replace them with null.
+     */
+    public static function getValueWithUnresolvedReferences(Model $model, string $key): mixed
+    {
+        $value = $model->getAttribute($key);
+        $castType = $model->getCasts()[$key] ?? null;
+        if (
+            ! ($model instanceof HasJsonDataRelations) ||
+            ! is_string($castType) ||
+            ! is_a($castType, self::class, true) ||
+            ! is_array($value)
+        ) {
+            return $value;
+        }
+
+        $rawValue = $model->getAttributes()[$key] ?? null;
+        $storedValue = is_string($rawValue) ? json_decode($rawValue, true) : null;
+        if (! is_array($storedValue)) {
+            return $value;
+        }
+
+        $paths = self::normalizeJsonDataRelations(
+            $model->getJsonDataRelations($key, $storedValue, $model->getAttributes())
+        )
+            ->pluck('path')
+            ->flatten()
+            ->all();
+        foreach (Data::matchingPaths($paths, $storedValue) as $path) {
+            $reference = data_get($storedValue, $path);
+            if (! is_null(self::getRelationAndIdFromPath($reference)) && is_null(data_get($value, $path))) {
+                data_set($value, $path, $reference);
+            }
+        }
+
+        return $value;
+    }
+
+    /**
      * Whether the item is a reference to the relation, as stored.
      */
     protected static function isReferenceTo($item, $relationName): bool
