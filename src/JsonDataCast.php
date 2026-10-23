@@ -13,6 +13,7 @@ use Folklore\Eloquent\Exceptions\ReferenceNotAllowed;
 use Folklore\Support\Data;
 use Illuminate\Container\Container;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
+use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -57,11 +58,13 @@ class JsonDataCast implements CastsAttributes
     private static ?WeakMap $resolved = null;
 
     /**
-     * The model classes whose `saving` event prepares pending values, by event dispatcher.
+     * The model classes whose `saving` event prepares pending values, and whose `saved`
+     * event syncs relations, by event dispatcher. Weak, so that a dispatcher that is
+     * gone, and whose object id is reused, doesn't count.
      *
-     * @var array<int, array<string, true>>
+     * @var WeakMap<Dispatcher, array<string, true>>|null
      */
-    private static array $listening = [];
+    private static ?WeakMap $listening = null;
 
     /**
      * Cast the given value.
@@ -162,6 +165,7 @@ class JsonDataCast implements CastsAttributes
     public function set($model, $key, $value, $attributes)
     {
         if ($model instanceof HasJsonDataRelations) {
+            self::listen($model);
             self::forgetPending($model, $key);
             $rawStored = $model->getAttributes()[$key] ?? null;
             $stored = is_string($rawStored) && $rawStored !== '' ? json_decode($rawStored, true) : null;
@@ -509,7 +513,14 @@ class JsonDataCast implements CastsAttributes
         self::resolvedStore()[$model] = $memo;
     }
 
-    public static function syncRelations($model)
+    /**
+     * Syncs the relations of the references at their paths (docs/json-data.md, "Syncing").
+     * The cast runs it after a model is saved, for the attributes that changed. A relation
+     * gathers its references from every JSON attribute of the model.
+     *
+     * @param  list<string>|null  $only  The JSON attributes whose relations are synced, or every one.
+     */
+    public static function syncRelations($model, ?array $only = null)
     {
         // Only models have casts and relations to sync
         if (! ($model instanceof HasJsonDataRelations) || ! ($model instanceof Model)) {
@@ -519,6 +530,7 @@ class JsonDataCast implements CastsAttributes
         $castsWithRelations = self::castAttributes($model);
 
         $relationsMap = [];
+        $declaredIn = [];
         $attributes = $model->getAttributes();
         foreach ($castsWithRelations as $key) {
             $attributeValue = data_get($attributes, $key);
@@ -531,6 +543,7 @@ class JsonDataCast implements CastsAttributes
                     continue;
                 }
                 $relationName = self::relationName($model, $relation, null, null);
+                $declaredIn[$relationName][] = (string) $key;
                 $relationsMap[$relationName] = [
                     'relation' => $relation,
                     'ids' => array_values(array_unique(
@@ -542,6 +555,14 @@ class JsonDataCast implements CastsAttributes
                     )),
                 ];
             }
+        }
+
+        if (! is_null($only)) {
+            $relationsMap = array_filter(
+                $relationsMap,
+                fn (string $relationName) => count(array_intersect($declaredIn[$relationName] ?? [], $only)) > 0,
+                ARRAY_FILTER_USE_KEY,
+            );
         }
 
         foreach ($relationsMap as $relationName => $item) {
@@ -597,9 +618,31 @@ class JsonDataCast implements CastsAttributes
             }
         }
 
+        // No refresh(): the synced relations are read again when they are next used
+        foreach (array_keys($relationsMap) as $relationName) {
+            $model->unsetRelation($relationName);
+        }
+        if (count($relationsMap) > 0 && method_exists($model, 'syncMedias')) {
+            $model->unsetRelation('medias');
+        }
         unset(self::resolvedStore()[$model]);
 
         return $relationsMap;
+    }
+
+    /**
+     * After a model is saved with events, syncs the relations declared in the JSON
+     * attributes that changed. `saveQuietly()` and `withoutEvents()` skip it.
+     */
+    public static function syncSaved(Model $model): void
+    {
+        $changed = array_values(array_filter(
+            self::castAttributes($model),
+            fn (string $attribute) => $model->isDirty($attribute),
+        ));
+        if (count($changed) > 0) {
+            self::syncRelations($model, $changed);
+        }
     }
 
     /**
@@ -1046,21 +1089,36 @@ class JsonDataCast implements CastsAttributes
     }
 
     /**
-     * Whether values are prepared when the model is saved: a `saving` listener is
-     * registered for the model's class, once per event dispatcher.
+     * Whether values are prepared when the model is saved: the model's class has an event
+     * dispatcher, where listen() registers its `saving` listener.
      */
     protected static function defersPreparing(Model $model): bool
+    {
+        return self::listen($model);
+    }
+
+    /**
+     * Registers, once per model class and event dispatcher, the `saving` listener that
+     * prepares pending values and the `saved` one that syncs relations. False without a
+     * dispatcher.
+     */
+    protected static function listen(Model $model): bool
     {
         $dispatcher = $model::getEventDispatcher();
         if (is_null($dispatcher)) {
             return false;
         }
-        $id = spl_object_id($dispatcher);
-        if (! isset(self::$listening[$id][$model::class])) {
+        self::$listening ??= new WeakMap;
+        $classes = self::$listening[$dispatcher] ?? [];
+        if (! isset($classes[$model::class])) {
             $dispatcher->listen('eloquent.saving: '.$model::class, function (Model $saving) {
                 self::preparePending($saving);
             });
-            self::$listening[$id][$model::class] = true;
+            $dispatcher->listen('eloquent.saved: '.$model::class, function (Model $saved) {
+                self::syncSaved($saved);
+            });
+            $classes[$model::class] = true;
+            self::$listening[$dispatcher] = $classes;
         }
 
         return true;

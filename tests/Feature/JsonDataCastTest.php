@@ -92,9 +92,10 @@ class JsonDataCastTest extends JsonDataTestCase
     {
         $block = $this->makeBlock();
 
+        // Saved without events, so that nothing syncs: the value is assigned as a reference
         $game = new Game;
-        $game->data = ['blocks' => [$block]];
-        $game->save();
+        $game->data = ['blocks' => ['blocks://'.$block->id]];
+        $game->saveQuietly();
 
         $this->assertSame('blocks://'.$block->id, $this->rawData($game)['blocks'][0]);
         $this->assertNull(Game::find($game->id)->data['blocks'][0]);
