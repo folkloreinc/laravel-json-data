@@ -16,6 +16,6 @@ The default handler of 2.0 resolves a mapped key by its column, with one `whereI
 
 ## Consequences
 
-- Upgraded sites read the same models as in 1.x.
+- Upgraded sites read the same models as in 1.x, except media: the medias module maps the `medias` key ([0008](0008-media-references.md)), so a media reference resolves by its id whether or not the media is attached, and `MediaReferences::allowUsing()` scopes it. In 1.x, the JSON references of media were synced to the pivot anyway, so an attached media is the common case.
 - A site that maps a key to a model changes how it is scoped: the rows it should not read are refused by an `allows()` (a tenant check), not by an attachment.
 - The default handler is `Folklore\Eloquent\ModelReferences`, which applications extend.

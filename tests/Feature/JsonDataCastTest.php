@@ -83,7 +83,31 @@ class JsonDataCastTest extends JsonDataTestCase
         $this->assertSame('medias://12', Game::find($game->id)->data['cover']);
     }
 
+    /**
+     * A key that isn't mapped resolves through the owner's relation, as in 1.x:
+     * only once the row is attached (docs/decisions/0016).
+     */
     public function test_a_reference_resolves_only_through_the_synced_relation()
+    {
+        $block = $this->makeBlock();
+
+        $game = new Game;
+        $game->data = ['blocks' => [$block]];
+        $game->save();
+
+        $this->assertSame('blocks://'.$block->id, $this->rawData($game)['blocks'][0]);
+        $this->assertNull(Game::find($game->id)->data['blocks'][0]);
+
+        JsonDataCast::syncRelations($game);
+
+        $this->assertTrue(Game::find($game->id)->data['blocks'][0]->is($block));
+    }
+
+    /**
+     * The medias module maps the `medias` key: a media reference resolves by its id,
+     * attached or not, and MediaReferences::allowUsing() scopes it (decisions/0008).
+     */
+    public function test_a_media_reference_resolves_by_its_key_before_it_is_synced()
     {
         $media = $this->makeMedia();
 
@@ -92,10 +116,6 @@ class JsonDataCastTest extends JsonDataTestCase
         $game->save();
 
         $this->assertSame('medias://'.$media->id, $this->rawData($game)['image']['fr']);
-        $this->assertNull(Game::find($game->id)->data['image']['fr']);
-
-        JsonDataCast::syncRelations($game);
-
         $this->assertTrue(Game::find($game->id)->data['image']['fr']->is($media));
     }
 

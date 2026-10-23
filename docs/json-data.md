@@ -287,18 +287,20 @@ The medias module registers two keys, when `laravel-mediatheque` 2 is installed:
 | `media` | `uid` | `media://med_01J…` | 2.0 |
 | `medias` | `id` | `medias://12` | 1.x, kept for upgraded sites |
 
-Both use `MediaReferences`, so either one resolves in a relation to media. Which one is written by default is set by the order in which the module maps them: `media` first for new projects, `medias` first for upgraded sites (`folklore:upgrade` sets it), so that front ends that read `medias://` keep working until they move. A relation can still choose with `key`.
+Both use `Folklore\Eloquent\MediaReferences`, so either one resolves in a relation to media, attached or not ([decisions/0016](decisions/0016-scope-of-unmapped-keys.md)). The module maps first, and so writes by default, the key of `site.medias.reference_key`: `media` for new projects (the default), `medias` for upgraded sites (`folklore:upgrade` will set it), so that front ends that read `medias://` keep working until they move. A relation can still choose with `key`, and a reference of the other key is kept as it is until the rewrite command converts it.
 
 `MediaReferences`:
 
-- `prepare()` accepts a media model, a media entity, a reference of either key, a uid, a 1.x id, a Panneau 5 media value, an uploaded file or a URL. Files and URLs are ingested with `Mediatheque::ingest()`, which replaces the `SyncsJsonDataRelations` traits several sites copied.
+- `prepare()` accepts a media model, a media entity, a reference of either key, a uid, a 1.x id, a Panneau 5 media value (`['id' => 'med_…']`), an uploaded file, a file or a URL. Files are ingested with `Mediatheque::ingest()`, which replaces the `SyncsJsonDataRelations` traits several sites copied. A URL is downloaded with the medias repository's limits (`site.medias.download`), then ingested, until the mediatheque ingests URLs behind its SSRF guard. Files and URLs are ingested when the owner is saved ([decisions/0013](decisions/0013-defer-prepare-until-saving.md)).
 - `resolveMany()` goes through `Mediatheque::resolveMany()`, one query per form.
 - Applications plug their tenancy into it:
 
 ```php
 MediaReferences::ingestUsing(fn (Model $owner) => ['workspace_id' => $owner->workspace_id]);
-MediaReferences::allowUsing(fn (Media $media, Model $owner) => $media->workspace_id === $owner->workspace_id);
+MediaReferences::allowUsing(fn (Media $media, ?Model $owner) => $media->workspace_id === $owner?->workspace_id);
 ```
+
+`ingestUsing()` gives the columns of the media ingested for an owner; `allowUsing()` is checked on write (a refusal throws `ReferenceNotAllowed`) and on read (a refused media reads as `null`).
 
 ## Repositories
 
