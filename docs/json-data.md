@@ -27,8 +27,8 @@ Class and method names are settled in [decisions/0014](decisions/0014-names.md).
 
 A reference is a string `{key}://{identifier}`:
 
-- `key` matches `[a-z][a-z0-9_-]*`;
-- `identifier` is the value of the key's identifier column, as a string. It is never empty.
+- `key` matches `[A-Za-z][A-Za-z0-9_-]*` (`JsonData::KEY_PATTERN`). Mapped keys are lowercase by convention; unmapped 1.x keys are relation names, which may be in camel case;
+- `identifier` is the value of the key's identifier column, as a string. It is never empty and has no whitespace.
 
 The format is unchanged from 1.x, so JavaScript code that reads `relation://id` today keeps working. Since a key now always means the same model, a reader outside PHP can tell what a reference points to from its key alone.
 
@@ -212,7 +212,7 @@ interface ReferenceHandler
 }
 ```
 
-`ReferenceContext` is a readonly object with the owner model (or the owners' class, in a batch), the column, the path, the relation name, the key, its model and column, and whether it is a read or a write.
+`ReferenceContext` is a readonly object with the operation (`ReferenceOperation::Read` or `Write`), the key and its target (`JsonReference`: model, column, handler), the owners' class, the owner model (null in a batch of several owners), the JSON attribute, the declared path (null in a batch of several paths) and the relation name.
 
 The #56 design passes references to `resolveMany()`. This spec passes identifiers with the context, so that a handler doesn't parse what the cast has already parsed, and so that `MediaReferences` can serve two keys with different columns. To settle in review.
 
@@ -256,12 +256,12 @@ An API lists the references of a model, without resolving them:
 JsonData::references($brand);              // every cast column
 JsonData::references($brand, ['images']);
 
-// Collection<int, JsonReferenceEntry>: column, path, key, identifier, relation
+// Collection<int, JsonReferenceEntry>: key, identifier, target, attribute, path, relation
 ```
 
 It reads the stored value, not the resolved one, so it lists references that don't resolve too. `laravel-mediatheque` 2 uses it to keep its usage graph in sync, and `folklore:upgrade --check` to report keys that aren't mapped.
 
-`JsonData::parse('media://med_01J…')` returns a `JsonReferenceEntry` (key, identifier, model, column) or `null`, and `JsonData::reference($model)` builds the reference of a model with its first key.
+`JsonData::parse('media://med_01J…')` returns a `JsonReferenceEntry` (key, identifier, and the key's target, or none for an unmapped key without `enforceMap()`) or `null`, and `JsonData::reference($model)` builds the reference of a model with its first key. `JsonData::keysFor($model)` and `keyFor($model)` list the keys mapped to a model or one it extends.
 
 ## Rewriting references
 
