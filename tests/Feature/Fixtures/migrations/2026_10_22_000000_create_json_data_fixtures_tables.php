@@ -10,7 +10,7 @@ return new class extends Migration
     {
         Schema::create('contests', function (Blueprint $table) {
             $table->id();
-            $table->json('data')->nullable();
+            $table->jsonb('data')->nullable();
             $table->timestamps();
         });
 
@@ -19,7 +19,7 @@ return new class extends Migration
             $table->string('handle')->nullable();
             $table->string('title_fr')->nullable();
             $table->string('title_en')->nullable();
-            $table->json('data')->nullable();
+            $table->jsonb('data')->nullable();
             $table->timestamps();
         });
 
@@ -27,7 +27,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('contest_id')->nullable()->index();
             $table->string('handle')->nullable();
-            $table->json('data')->nullable();
+            $table->jsonb('data')->nullable();
             $table->timestamps();
         });
 
