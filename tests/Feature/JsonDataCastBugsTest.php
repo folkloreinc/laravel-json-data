@@ -133,19 +133,19 @@ class JsonDataCastBugsTest extends JsonDataTestCase
     }
 
     /**
-     * Another string at a reference path is still taken as an id when it is
-     * written: 2.0's key registry checks the references it writes (#56). The
-     * sync of media no longer attaches it: 1.x wrote it to the pivot, which
-     * SQLite stored and MySQL refused.
+     * Fixed in 2.0: another string at a reference path (a URL, a reference of
+     * another relation) was taken for an id, written as `medias://https://…`,
+     * and synced to the pivot, which SQLite stored and MySQL refused. It is not
+     * a media, so it is written as null and not synced (docs/json-data.md).
      */
-    public function test_another_string_at_a_reference_path_is_written_but_not_synced()
+    public function test_another_string_at_a_reference_path_is_not_taken_as_an_id()
     {
         $game = new Game;
         $game->data = ['image' => ['fr' => 'https://example.com/image.png', 'en' => 'blocks://1']];
         $game->save();
 
-        $this->assertSame('medias://https://example.com/image.png', $this->rawData($game)['image']['fr']);
-        $this->assertSame('medias://blocks://1', $this->rawData($game)['image']['en']);
+        $this->assertNull($this->rawData($game)['image']['fr']);
+        $this->assertNull($this->rawData($game)['image']['en']);
 
         JsonDataCast::syncRelations($game);
 
