@@ -147,7 +147,11 @@ A value that can't be prepared throws `InvalidJsonReference` under `enforceMap()
 `prepare()` can ingest a file, and the save can still fail after `saving`: the query, the sync of relations, or a later listener. The media would then exist without a usage.
 
 - Repositories run `saveData()` in a database transaction (in 1.x, only the `Pages` and `Blocks` repositories did). When it rolls back, the media row created by `Mediatheque::ingest()` rolls back with it, and the mediatheque doesn't run its pipeline, which it dispatches only after the commit. The stored file is left without a media; `mediatheque:prune` deletes orphan files ([laravel-mediatheque 2's roadmap](https://github.com/folkloreinc/laravel-mediatheque/blob/v2.x/docs/roadmap.md), alpha 2).
-- A model saved outside a transaction (`$model->save()` in application code) can leave a media without a usage. Whether the mediatheque prunes media that were never used, through its usage graph, is to be settled with it before alpha 1 ([roadmap.md](roadmap.md#open-questions)).
+- A model saved outside a transaction (`$model->save()` in application code) can leave a media without a usage, which nothing prunes ([decisions/0019](decisions/0019-media-of-failed-saves.md)). Save it in a transaction to avoid it:
+
+  ```php
+  DB::transaction(fn () => $model->save());
+  ```
 
 ### Partial updates
 
