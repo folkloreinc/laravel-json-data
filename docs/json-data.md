@@ -179,7 +179,7 @@ JsonData::load($games, ['data']);                // some columns
 $repository->withJsonReferences()->get($query);  // in a repository
 ```
 
-`JsonData::load()` reads the references of every model, groups them by key, calls each handler's `resolveMany()` once, and seeds each model's memoized value. A model of the collection read afterwards doesn't query again.
+`JsonData::load()` reads the references of every model, groups them by key, calls each handler's `resolveMany()` once, checks `allows()` for each owner, and seeds each model's memoized value. The relations of unmapped keys are eager-loaded on the collection (`loadMissing()`), `lazy` ones included. A model of the collection read afterwards doesn't query again.
 
 A key that isn't mapped resolves as in 1.x, through the owner's relation of the same name, so only the rows attached to the owner resolve ([decisions/0016](decisions/0016-scope-of-unmapped-keys.md)). A mapped key resolves by its column through its handler, and `allows()` scopes it.
 
@@ -271,10 +271,10 @@ It reads the stored value, not the resolved one, so it lists references that don
 php artisan folklore:json-references:rewrite --from=medias --to=media --dry-run
 ```
 
-- Rewrites every reference with the key `--from` to the key `--to`, in every cast column of the models given by `--model` (repeatable) or found in the application's models directory.
+- Rewrites every reference with the key `--from` to the key `--to`, at the declared paths of every cast column of the models given by `--model` (repeatable), or of the models of `app/Models` and, with the pages module, of its `Page` and `Block`.
 - Both keys must be mapped to the same model. Identifiers are converted in batches through the model (`medias://12` → `media://med_…` reads the `uid` of media 12).
 - References that don't resolve are left as they are and reported.
-- `--dry-run` reports what would change. The command works in chunks, without model events, and can be run again.
+- `--dry-run` reports what would change. The command works in chunks (`--chunk`, 500 rows), without model events or global scopes, and can be run again.
 
 `laravel-mediatheque` 2 planned a helper to rewrite JSON columns; this command is that helper, for `laravel-folklore` columns.
 
@@ -304,8 +304,8 @@ MediaReferences::allowUsing(fn (Media $media, ?Model $owner) => $media->workspac
 
 ## Repositories
 
-- A repository lists its JSON columns (`$jsonAttributes = ['data', 'images']`), and merges updates into each of them. `$jsonAttributeName` (`data`) keeps working, deprecated.
-- `withJsonReferences()` returns a copy of the repository that loads the references of each result with `JsonData::load()`, so `lazy` is no longer needed.
+- A repository lists its JSON columns (`$jsonAttributes = ['data', 'images']`). The first one takes the data that isn't fillable, as `$jsonAttributeName` (`data`) does in 1.x, which keeps working, deprecated. Each of the others is given as a whole (`['images' => ['logo' => $media]]`) and merged into its stored value: the keys given replace theirs, the others stay, and the references that don't resolve are put back first. `null` clears it.
+- `withJsonReferences()` returns a copy of the repository that loads the references of each result with `JsonData::load()`, so `lazy` is no longer needed. The repository it is called on doesn't change.
 
 ## From 1.x
 

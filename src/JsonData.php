@@ -4,6 +4,7 @@ namespace Folklore\Eloquent;
 
 use Folklore\Eloquent\Exceptions\InvalidJsonReference;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Collection;
 
 /**
  * The global registry of reference keys in JSON data, like Eloquent's morph map
@@ -142,6 +143,29 @@ final class JsonData
             ?? throw InvalidJsonReference::missingIdentifier($key, $model::class);
 
         return $key.'://'.$identifier;
+    }
+
+    /**
+     * Resolves the references of a collection of models together: one query per key for
+     * the whole collection, and the relations of unmapped keys eager-loaded.
+     *
+     * @param  iterable<mixed>  $models
+     * @param  list<string>|null  $attributes  The JSON attributes, or every one.
+     */
+    public static function load(iterable $models, ?array $attributes = null): void
+    {
+        JsonDataCast::load($models, $attributes);
+    }
+
+    /**
+     * The references stored in a model's JSON attributes, whether they resolve or not.
+     *
+     * @param  list<string>|null  $attributes  The JSON attributes, or every one.
+     * @return Collection<int, JsonReferenceEntry>
+     */
+    public static function references(Model $model, ?array $attributes = null): Collection
+    {
+        return JsonDataCast::references($model, $attributes);
     }
 
     /**

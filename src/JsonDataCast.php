@@ -13,6 +13,7 @@ use Folklore\Eloquent\Exceptions\ReferenceNotAllowed;
 use Folklore\Support\Data;
 use Illuminate\Container\Container;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -22,7 +23,6 @@ use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Traits\Macroable;
-use ReflectionClass;
 use WeakMap;
 
 /**
@@ -333,6 +333,182 @@ class JsonDataCast implements CastsAttributes
         }
     }
 
+    /**
+     * Resolves the references of a collection of models together: one call to each key's
+     * handler for the whole collection, and, for keys that aren't mapped, the relation
+     * eager-loaded on the collection. Each model's value is then read without a query
+     * (docs/json-data.md, "Batch resolution").
+     *
+     * @param  iterable<mixed>  $models
+     * @param  list<string>|null  $attributes  The JSON attributes, or every one.
+     */
+    public static function load(iterable $models, ?array $attributes = null): void
+    {
+        /** @var array<string, array{entry: JsonReferenceEntry, relation: array<string, mixed>, relationName: string, ownerClass: class-string<Model>, attribute: string, identifiers: list<string>, owners: list<array{Model, mixed, string}>}> $groups */
+        $groups = [];
+        /** @var array<class-string<Model>, array{models: array<int, Model>, relations: array<string, true>}> $eager */
+        $eager = [];
+
+        foreach ($models as $model) {
+            if (! $model instanceof Model || ! $model instanceof HasJsonDataRelations) {
+                continue;
+            }
+            foreach (self::castAttributes($model, $attributes) as $attribute) {
+                $raw = $model->getAttributes()[$attribute] ?? null;
+                foreach (self::storedReferences($model, $attribute) as [$entry, $relation]) {
+                    if ($entry->isMapped() && ! is_null($entry->target)) {
+                        $group = $model::class.'|'.$attribute.'|'.self::memoKey($entry->key, $relation, '');
+                        $groups[$group] ??= [
+                            'entry' => $entry,
+                            'relation' => $relation,
+                            'relationName' => (string) $entry->relation,
+                            'ownerClass' => $model::class,
+                            'attribute' => $attribute,
+                            'identifiers' => [],
+                            'owners' => [],
+                        ];
+                        $groups[$group]['identifiers'][] = $entry->identifier;
+                        $groups[$group]['owners'][] = [$model, $raw, $entry->identifier];
+                    } elseif (! is_null($entry->relation)) {
+                        $eager[$model::class]['models'][spl_object_id($model)] = $model;
+                        $eager[$model::class]['relations'][$entry->relation] = true;
+                    }
+                }
+            }
+        }
+
+        foreach ($groups as $group) {
+            $entry = $group['entry'];
+            if (is_null($entry->target)) {
+                continue;
+            }
+            $handler = self::handler($entry->target, $group['relation']);
+            $found = $handler->resolveMany(array_values(array_unique($group['identifiers'])), new ReferenceContext(
+                operation: ReferenceOperation::Read,
+                key: $entry->key,
+                target: $entry->target,
+                ownerClass: $group['ownerClass'],
+                owner: null,
+                attribute: $group['attribute'],
+                relation: $group['relationName'],
+            ));
+            foreach ($group['owners'] as [$owner, $raw, $identifier]) {
+                $resolved = $found[$identifier] ?? null;
+                $allowed = ! is_null($resolved) && $handler->allows($resolved, new ReferenceContext(
+                    operation: ReferenceOperation::Read,
+                    key: $entry->key,
+                    target: $entry->target,
+                    ownerClass: $group['ownerClass'],
+                    owner: $owner,
+                    attribute: $group['attribute'],
+                    relation: $group['relationName'],
+                ));
+                self::seedResolved($owner, $group['attribute'], $raw, self::memoKey($entry->key, $group['relation'], $identifier), $allowed ? $resolved : null);
+            }
+        }
+
+        foreach ($eager as $batch) {
+            (new EloquentCollection(array_values($batch['models'])))->loadMissing(array_keys($batch['relations']));
+        }
+    }
+
+    /**
+     * The references stored in a model's JSON attributes, at their declared paths, whether
+     * they resolve or not (docs/json-data.md, "Reference listing").
+     *
+     * @param  list<string>|null  $attributes  The JSON attributes, or every one.
+     * @return Collection<int, JsonReferenceEntry>
+     */
+    public static function references(Model $model, ?array $attributes = null): Collection
+    {
+        $entries = [];
+        if ($model instanceof HasJsonDataRelations) {
+            foreach (self::castAttributes($model, $attributes) as $attribute) {
+                foreach (self::storedReferences($model, $attribute) as [$entry]) {
+                    $entries[] = $entry;
+                }
+            }
+        }
+
+        return new Collection($entries);
+    }
+
+    /**
+     * The attributes of a model cast with this cast, or a subclass of it.
+     *
+     * @param  list<string>|null  $only
+     * @return list<string>
+     */
+    protected static function castAttributes(Model $model, ?array $only = null): array
+    {
+        $attributes = [];
+        foreach ($model->getCasts() as $attribute => $cast) {
+            if (is_a($cast, self::class, true) && (is_null($only) || in_array($attribute, $only, true))) {
+                $attributes[] = (string) $attribute;
+            }
+        }
+
+        return $attributes;
+    }
+
+    /**
+     * The references that a relation accepts at its declared paths, in a model's stored
+     * JSON attribute: mapped keys of the related model, and, outside recursive paths, the
+     * key named after the relation when it isn't mapped.
+     *
+     * @return list<array{JsonReferenceEntry, array<string, mixed>}>
+     */
+    protected static function storedReferences(HasJsonDataRelations&Model $model, string $attribute): array
+    {
+        $raw = $model->getAttributes()[$attribute] ?? null;
+        $value = is_string($raw) && $raw !== '' ? json_decode($raw, true) : null;
+        if (! is_array($value)) {
+            return [];
+        }
+
+        $references = [];
+        foreach (self::relations($model, $attribute, $value, $model->getAttributes()) as $relation) {
+            $relationName = self::relationName($model, $relation, null, null);
+            $related = self::relatedClass($model, $relationName);
+            foreach (self::paths($relation) as $pattern) {
+                foreach (Data::matchingPaths([$pattern], $value) as $path) {
+                    if (! is_string($path) && ! is_int($path)) {
+                        continue;
+                    }
+                    $item = data_get($value, (string) $path);
+                    $entry = is_string($item) ? JsonData::parse($item) : null;
+                    if (is_null($entry)) {
+                        continue;
+                    }
+                    $accepted = $entry->isMapped()
+                        ? ! is_null($related) && (bool) $entry->target?->accepts($related)
+                        : ! self::isRecursive($pattern) && $entry->key === $relationName && ! is_null($related);
+                    if ($accepted) {
+                        $references[] = [
+                            new JsonReferenceEntry($entry->key, $entry->identifier, $entry->target, $attribute, (string) $path, $relationName),
+                            $relation,
+                        ];
+                    }
+                }
+            }
+        }
+
+        return $references;
+    }
+
+    /**
+     * Memoizes a resolved model of a model's attribute, for its raw value.
+     */
+    protected static function seedResolved(Model $model, string $attribute, mixed $raw, string $memoKey, ?Model $resolved): void
+    {
+        $memo = self::resolvedStore()[$model] ?? [];
+        $current = $memo[$attribute] ?? null;
+        $models = ! is_null($current) && $current['raw'] === $raw ? $current['models'] : [];
+        $models[$memoKey] = $resolved;
+        $memo[$attribute] = ['raw' => $raw, 'models' => $models];
+        self::resolvedStore()[$model] = $memo;
+    }
+
     public static function syncRelations($model)
     {
         // Only models have casts and relations to sync
@@ -340,21 +516,7 @@ class JsonDataCast implements CastsAttributes
             return;
         }
 
-        $castsWithRelations = collect($model->getCasts())
-            ->filter(function ($castType) {
-                if (! class_exists($castType)) {
-                    return false;
-                }
-                if ($castType === self::class) {
-                    return true;
-                }
-
-                $reflectionClass = new ReflectionClass($castType);
-
-                return $reflectionClass->isSubclassOf(self::class);
-            })
-            ->keys()
-            ->values();
+        $castsWithRelations = self::castAttributes($model);
 
         $relationsMap = [];
         $attributes = $model->getAttributes();
