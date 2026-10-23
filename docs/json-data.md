@@ -218,7 +218,7 @@ interface ReferenceHandler
 
 `ReferenceContext` is a readonly object with the operation (`ReferenceOperation::Read` or `Write`), the key and its target (`JsonReference`: model, column, handler), the owners' class, the owner model (null in a batch of several owners), the JSON attribute, the declared path (null in a batch of several paths) and the relation name.
 
-The #56 design passes references to `resolveMany()`. This spec passes identifiers with the context, so that a handler doesn't parse what the cast has already parsed, and so that `MediaReferences` can serve two keys with different columns. To settle in review.
+The #56 design passed references to `resolveMany()`. It takes identifiers with the context, so that a handler doesn't parse what the cast has already parsed, and so that `MediaReferences` can serve two keys with different columns. Settled in alpha 1.
 
 ### Default handler
 
@@ -326,4 +326,4 @@ MediaReferences::allowUsing(fn (Media $media, ?Model $owner) => $media->workspac
 | One JSON column per repository (`$jsonAttributeName`) | `$jsonAttributes` | Kept, deprecated |
 | `syncRelations()` then `refresh()` | Relations and memoized values unset | — |
 
-Every 1.1 test of the cast passes on 2.0 without changes, except those that assert a deprecated behaviour's notice. The characterization tests added in 1.1.8 ([#60](https://github.com/folkloreinc/laravel-folklore/pull/60)) are the reference.
+Every 1.1 test of the cast passes on 2.0 without changes, except those that assert a deprecated behaviour's notice. The characterization tests added in 1.1.8 ([#60](https://github.com/folkloreinc/laravel-folklore/pull/60)) are the reference. Three of them change on purpose, as the breaking changes of 2.0.0-alpha.1 in the [CHANGELOG](../CHANGELOG.md) say: a string at a reference path that isn't a reference of its relation is neither written nor synced as an id, a reference is synced only to the relation of its path, and a media reference resolves by its key before it is attached.
