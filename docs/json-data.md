@@ -166,6 +166,28 @@ A repository merges an update into the current value of the column. References t
 - A string at a declared path whose key is neither mapped nor, without a map, the name of the relation, is not a reference: it is returned as is. In 1.x, a URL or a reference of another relation stored at a reference path was taken for an id.
 - The resolved model is checked with the handler's `allows()`. A refused model reads as `null`, and its reference is kept on the next write.
 
+### Stored references
+
+`JsonData::stored($model, 'body')` returns the decoded value of a JSON attribute as it is stored, with its references as `{key}://{identifier}` strings instead of models ([#88](https://github.com/folkloreinc/laravel-folklore/issues/88)). APIs and front ends that read references get them without serializing whole models, and an entity can expose both forms:
+
+```php
+public function body(): ?array
+{
+    return JsonData::stored($this->getModel(), 'body'); // for the resource: `media://med_…`
+}
+
+public function bodyMedia(): array
+{
+    return $this->getModel()->body['media'] ?? [];    // for the code: the resolved models
+}
+```
+
+- A value assigned to a reference path and not saved yet reads as the reference stored before at its path, or `null`, until the model is saved: it is only prepared when the model is saved ([decisions/0013](decisions/0013-defer-prepare-until-saving.md)).
+- Every reference reads as stored, whether it resolves or not, and under recursive paths (`**`).
+- An attribute that isn't cast with `JsonDataCast` throws an `InvalidArgumentException`. An empty one reads as `null`.
+
+`getAttributes()` gives the raw JSON string. Serializing the resolved value sends whole models instead of references.
+
 ### Memoization
 
 The decoded and resolved value is memoized per model and column, keyed by the raw attribute. It is decoded and resolved again only when the raw attribute changes (`set()`, `fill()`, `refresh()`).

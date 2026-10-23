@@ -169,6 +169,19 @@ final class JsonData
     }
 
     /**
+     * The decoded value of a JSON attribute as it is stored, with its references as
+     * `{key}://{identifier}` strings instead of models. A value assigned to a reference
+     * path and not saved yet reads as the reference stored before at its path, or null,
+     * until the model is saved (docs/json-data.md, "Reading").
+     *
+     * @return array<array-key, mixed>|null
+     */
+    public static function stored(Model $model, string $attribute): ?array
+    {
+        return JsonDataCast::stored($model, $attribute);
+    }
+
+    /**
      * Forgets every key and turns `enforceMap()` off. For tests.
      *
      * @internal

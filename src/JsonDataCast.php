@@ -24,6 +24,7 @@ use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Traits\Macroable;
+use InvalidArgumentException;
 use WeakMap;
 
 /**
@@ -781,6 +782,25 @@ class JsonDataCast implements CastsAttributes
         }
 
         return null;
+    }
+
+    /**
+     * The decoded raw value of a JSON attribute cast with this cast: references stay
+     * strings, and the paths of pending values keep the reference stored before, which
+     * set() wrote there (JsonData::stored()).
+     *
+     * @return array<array-key, mixed>|null
+     */
+    public static function stored(Model $model, string $attribute): ?array
+    {
+        if (count(self::castAttributes($model, [$attribute])) === 0) {
+            throw new InvalidArgumentException("[{$attribute}] of [".$model::class.'] is not cast with '.self::class.'.');
+        }
+
+        $raw = $model->getAttributes()[$attribute] ?? null;
+        $value = is_string($raw) && $raw !== '' ? json_decode($raw, true, 512, JSON_THROW_ON_ERROR) : null;
+
+        return is_array($value) ? $value : null;
     }
 
     /**
