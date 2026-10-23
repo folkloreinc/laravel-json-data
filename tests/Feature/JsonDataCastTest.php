@@ -8,6 +8,7 @@ use Folklore\Tests\Feature\Eloquent\Fixtures\Game;
 use Folklore\Tests\Feature\Eloquent\Fixtures\Games;
 use Folklore\Tests\Feature\Eloquent\Fixtures\Prize;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Characterization tests: they pin how JsonDataCast behaves on 1.1, with cases
@@ -307,5 +308,30 @@ class JsonDataCastTest extends JsonDataTestCase
         $raw = $this->rawData($game->getModel());
         $this->assertSame(['fr' => 'Le nouveau quiz'], $raw['title']);
         $this->assertSame(['fr' => 'medias://'.$image->id], $raw['image']);
+    }
+
+    public function test_the_fixtures_store_the_json_data_as_jsonb_on_postgresql()
+    {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('The fixtures use jsonb on PostgreSQL only.');
+        }
+
+        $this->assertSame('jsonb', Schema::getColumnType('games', 'data'));
+    }
+
+    public function test_reading_a_value_the_database_reformatted_leaves_the_model_clean()
+    {
+        $image = $this->makeMedia();
+        $game = Game::create(['handle' => 'quiz']);
+        // As jsonb and MySQL return it: keys reordered, spaces after separators
+        DB::table('games')->where('id', $game->id)->update([
+            'data' => '{"blocks": [], "image": {"fr": "medias://'.$image->id.'"}, "title": {"fr": "Le quiz"}}',
+        ]);
+        $game = Game::findOrFail($game->id);
+
+        $this->assertTrue($game->data['image']['fr']->is($image));
+        $this->assertFalse($game->isDirty('data'));
+        $game->save();
+        $this->assertFalse($game->wasChanged());
     }
 }

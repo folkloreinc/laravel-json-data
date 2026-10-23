@@ -27,7 +27,7 @@ class JsonDataBatchesTest extends JsonDataTestCase
         parent::setUp();
 
         Schema::table('games', function (Blueprint $table) {
-            $table->json('images')->nullable();
+            $table->jsonb('images')->nullable();
         });
     }
 
