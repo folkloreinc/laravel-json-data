@@ -9,7 +9,6 @@ use Folklore\Tests\Feature\Eloquent\Fixtures\Contest;
 use Folklore\Tests\Feature\Eloquent\Fixtures\Game;
 use Folklore\Tests\Feature\Eloquent\Fixtures\Games;
 use Folklore\Tests\Feature\Eloquent\Fixtures\Prize;
-use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -134,11 +133,12 @@ class JsonDataCastBugsTest extends JsonDataTestCase
     }
 
     /**
-     * Another string at a reference path is still taken as an id, and the
-     * sync attaches it: SQLite stores it, MySQL refuses it. 2.0 checks the
-     * references it writes (#56).
+     * Another string at a reference path is still taken as an id when it is
+     * written: 2.0's key registry checks the references it writes (#56). The
+     * sync of media no longer attaches it: 1.x wrote it to the pivot, which
+     * SQLite stored and MySQL refused.
      */
-    public function test_another_string_at_a_reference_path_is_still_taken_as_an_id()
+    public function test_another_string_at_a_reference_path_is_written_but_not_synced()
     {
         $game = new Game;
         $game->data = ['image' => ['fr' => 'https://example.com/image.png', 'en' => 'blocks://1']];
@@ -147,15 +147,9 @@ class JsonDataCastBugsTest extends JsonDataTestCase
         $this->assertSame('medias://https://example.com/image.png', $this->rawData($game)['image']['fr']);
         $this->assertSame('medias://blocks://1', $this->rawData($game)['image']['en']);
 
-        if (DB::connection()->getDriverName() === 'mysql') {
-            $this->expectException(QueryException::class);
-        }
         JsonDataCast::syncRelations($game);
 
-        $this->assertEqualsCanonicalizing(
-            ['https://example.com/image.png', 'blocks://1'],
-            DB::table($game->medias()->getTable())->pluck('media_id')->all(),
-        );
+        $this->assertSame([], DB::table($game->medias()->getTable())->pluck('media_id')->all());
     }
 
     /**

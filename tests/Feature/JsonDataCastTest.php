@@ -140,6 +140,32 @@ class JsonDataCastTest extends JsonDataTestCase
         $this->assertSame('medias://'.$media->id, $this->rawData($game)['image']['fr']);
     }
 
+    /**
+     * The media of JSON data are synced under their own handle of the
+     * mediatheque's pivot: a media attached otherwise stays (#56).
+     */
+    public function test_sync_keeps_the_media_attached_otherwise()
+    {
+        $cover = $this->makeMedia();
+        $image = $this->makeMedia();
+
+        $game = new Game;
+        $game->data = ['image' => ['fr' => $image]];
+        $game->save();
+        $game->attachMedia($cover, 'cover');
+        JsonDataCast::syncRelations($game);
+
+        $this->assertTrue($game->fresh()?->media('cover')?->is($cover));
+        $this->assertSame([$image->id], $game->fresh()?->medias(JsonDataCast::MEDIAS_HANDLE)->map->getKey()->all());
+
+        $game->data = ['image' => []];
+        $game->save();
+        JsonDataCast::syncRelations($game);
+
+        $this->assertTrue($game->fresh()?->media('cover')?->is($cover));
+        $this->assertSame([], $game->fresh()?->medias(JsonDataCast::MEDIAS_HANDLE)->map->getKey()->all());
+    }
+
     public function test_sync_attaches_and_detaches_the_referenced_models()
     {
         $imageFr = $this->makeMedia();
