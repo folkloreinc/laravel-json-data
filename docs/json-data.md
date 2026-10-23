@@ -318,11 +318,11 @@ The medias module registers two keys, when `laravel-mediatheque` 2 is installed:
 | `media` | `uid` | `media://med_01J…` | 2.0 |
 | `medias` | `id` | `medias://12` | 1.x, kept for upgraded sites |
 
-Both use `Folklore\Eloquent\MediaReferences`, so either one resolves in a relation to media, attached or not ([decisions/0016](decisions/0016-scope-of-unmapped-keys.md)). The module maps first, and so writes by default, the key of `site.medias.reference_key`: `media` for new projects (the default), `medias` for upgraded sites (`folklore:upgrade` will set it), so that front ends that read `medias://` keep working until they move. A relation can still choose with `key`, and a reference of the other key is kept as it is until the rewrite command converts it.
+Both use `Folklore\Eloquent\MediaReferences`, so either one resolves in a relation to media, attached or not ([decisions/0016](decisions/0016-scope-of-unmapped-keys.md)). The module maps first, and so writes by default, the key of `site.medias.reference_key`: `media` for new projects (the default), `medias` for upgraded sites (`folklore:upgrade` will set it), so that front ends that read `medias://` keep working until they move. A relation can still choose with `key`, and a reference of the other key is kept as it is until the rewrite command converts it. A project that only wants `media://` references sets `site.medias.references.other_key` to `false`: the module then maps only the key of `site.medias.reference_key`.
 
 `MediaReferences`:
 
-- `prepare()` accepts a media model, a media entity, a reference of either key, a uid, a 1.x id, a Panneau 5 media value (`['id' => 'med_…']`), an uploaded file, a file or a URL. Files are ingested with `Mediatheque::ingest()`, which replaces the `SyncsJsonDataRelations` traits several sites copied. A URL is downloaded with the medias repository's limits (`site.medias.download`), then ingested, until the mediatheque ingests URLs behind its SSRF guard. Files and URLs are ingested when the owner is saved ([decisions/0013](decisions/0013-defer-prepare-until-saving.md)).
+- `prepare()` accepts a media model, a media entity, a reference of either key, a uid, a 1.x id, a Panneau 5 media value (`['id' => 'med_…']`), an uploaded file, a file or a URL, as far as `site.medias.references.accept` allows ([below](#accepted-forms)). Files are ingested with `Mediatheque::ingest()`, which replaces the `SyncsJsonDataRelations` traits several sites copied. A URL is downloaded with the medias repository's limits (`site.medias.download`), then ingested, until the mediatheque ingests URLs behind its SSRF guard. Files and URLs are ingested when the owner is saved ([decisions/0013](decisions/0013-defer-prepare-until-saving.md)).
 - `resolveMany()` goes through `Mediatheque::resolveMany()`, one query per form.
 - Applications plug their tenancy into it:
 
@@ -332,6 +332,36 @@ MediaReferences::allowUsing(fn (Media $media, ?Model $owner) => $media->workspac
 ```
 
 `ingestUsing()` gives the columns of the media ingested for an owner; `allowUsing()` is checked on write (a refusal throws `ReferenceNotAllowed`) and on read (a refused media reads as `null`).
+
+### Accepted forms
+
+A value that reaches a media path, from a form for example, is downloaded by the server if it is a URL, ingested if it is a file, and resolved by internal id if it is a number. `site.medias.references.accept` lists the forms `prepare()` takes ([#85](https://github.com/folkloreinc/laravel-folklore/issues/85)):
+
+| Form | Values |
+|---|---|
+| `model` | A media model or entity, or a Panneau 5 value whose `id` is a uid |
+| `reference` | A `media://med_…` reference |
+| `uid` | A uid (`med_…`) |
+| `legacy_id` | A 1.x id: `12`, `'12'`, `medias://12`, or a Panneau 5 value whose `id` is one |
+| `file` | An uploaded file or a file, ingested |
+| `url` | An http(s) URL, downloaded then ingested |
+
+```php
+// config/site.php
+'medias' => [
+    'reference_key' => 'media',
+    'references' => [
+        'accept' => MediaReferences::STRICT,  // ['model', 'reference', 'uid']
+        'other_key' => false,                  // don't map `medias://` (by internal id)
+    ],
+],
+```
+
+- By default (`null`), the forms are `MediaReferences::STRICT` under `JsonData::enforceMap()`, and every form (`MediaReferences::FORMS`) otherwise, as in 1.x, so upgraded sites keep their behaviour.
+- A value of a form that isn't accepted throws `InvalidJsonReference` under `enforceMap()`, and is written `null` otherwise, as any value the handler doesn't take. Nothing is downloaded nor ingested.
+- An unknown form throws an `InvalidArgumentException`.
+- A reference of a mapped key is kept as it is when it is written, without `prepare()` ([Writing](#when-a-value-is-assigned)). With both keys mapped, `medias://12` is still written under the strict forms: a project that refuses internal ids sets `other_key` to `false` too.
+- When URLs are accepted, set `site.medias.download.allowed_hosts`: it is `null` by default, which allows every host.
 
 ## Repositories
 
