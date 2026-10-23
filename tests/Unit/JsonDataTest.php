@@ -10,8 +10,10 @@ use Folklore\Tests\Unit\Eloquent\Fixtures\MediaHandler;
 use Folklore\Tests\Unit\Eloquent\Fixtures\ReferencedMedia;
 use Folklore\Tests\Unit\Eloquent\Fixtures\ReferencedPrize;
 use Illuminate\Database\Eloquent\Model;
+use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
+#[Group('core')]
 class JsonDataTest extends TestCase
 {
     protected function tearDown(): void

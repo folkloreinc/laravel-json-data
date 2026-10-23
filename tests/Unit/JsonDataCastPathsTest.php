@@ -3,8 +3,10 @@
 namespace Folklore\Tests\Unit\Eloquent;
 
 use Folklore\Eloquent\JsonDataCast;
+use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
+#[Group('core')]
 class JsonDataCastPathsTest extends TestCase
 {
     public function test_get_relation_and_id_from_path()

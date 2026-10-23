@@ -8,8 +8,10 @@ use Folklore\Eloquent\ReferenceContext;
 use Folklore\Eloquent\ReferenceOperation;
 use Folklore\Tests\Unit\Eloquent\Fixtures\ReferencedMedia;
 use Folklore\Tests\Unit\Eloquent\Fixtures\ReferencedPrize;
+use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
+#[Group('core')]
 class ReferenceContextTest extends TestCase
 {
     public function test_a_context_tells_the_operation()
