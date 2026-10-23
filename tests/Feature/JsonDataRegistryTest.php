@@ -215,18 +215,18 @@ class JsonDataRegistryTest extends JsonDataTestCase
     public function test_under_enforce_map_an_unmapped_key_is_not_a_reference()
     {
         JsonData::enforceMap(['prize' => [Prize::class, 'handle']]);
-        $game = $this->storedGame(['prizes' => [['prize' => 'prizes://1']], 'image' => ['fr' => 'medias://1']]);
+        $game = $this->storedGame(['prizes' => [['prize' => 'prizes://1']], 'body' => ['ref' => 'prizes://1']]);
 
         $this->assertSame('prizes://1', $game->data['prizes'][0]['prize']);
-        $this->assertSame('medias://1', $game->data['image']['fr']);
+        $this->assertSame('prizes://1', $game->data['body']['ref']);
     }
 
     public function test_under_enforce_map_a_model_without_a_key_cant_be_written()
     {
-        JsonData::enforceMap(['prize' => [Prize::class, 'handle']]);
+        JsonData::enforceMap(['block' => Block::class]);
 
         $game = new RegistryGame;
-        $game->data = ['image' => ['fr' => $this->makeMedia()]];
+        $game->data = ['prizes' => [['prize' => $this->prize('grand-prize')]]];
 
         $this->expectException(InvalidJsonReference::class);
 
