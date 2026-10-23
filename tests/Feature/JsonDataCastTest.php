@@ -210,7 +210,12 @@ class JsonDataCastTest extends JsonDataTestCase
         $this->assertSame(2, DB::table($game->medias()->getTable())->count());
     }
 
-    public function test_sync_uses_the_relation_named_by_the_stored_reference()
+    /**
+     * 1.x synced a stored reference to the relation named by its key, whatever
+     * the path: `blocks://1` under `image.*` was synced to `blocks`. In 2.0, only
+     * the references of the relation a path is declared with count.
+     */
+    public function test_sync_only_counts_the_references_of_the_declared_relation()
     {
         $block = $this->makeBlock();
         $game = Game::create(['handle' => 'quiz']);
@@ -220,7 +225,7 @@ class JsonDataCastTest extends JsonDataTestCase
 
         JsonDataCast::syncRelations(Game::find($game->id));
 
-        $this->assertSame([$block->id], $game->blocks()->pluck('blocks.id')->all());
+        $this->assertSame([], $game->blocks()->pluck('blocks.id')->all());
         $this->assertSame(0, $game->medias()->count());
     }
 

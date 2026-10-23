@@ -4,18 +4,32 @@ namespace Folklore\Eloquent;
 
 use Folklore\Contracts\Eloquent\HasJsonDataColumnExtract;
 use Folklore\Contracts\Eloquent\HasJsonDataRelations;
+use Folklore\Contracts\Eloquent\ReferenceHandler;
+use Folklore\Contracts\Entities\Entity;
+use Folklore\Contracts\Entities\HasModel;
+use Folklore\Contracts\Entities\ToEntity;
+use Folklore\Eloquent\Exceptions\InvalidJsonReference;
+use Folklore\Eloquent\Exceptions\ReferenceNotAllowed;
 use Folklore\Support\Data;
+use Illuminate\Container\Container;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasOneOrMany;
 use Illuminate\Database\Eloquent\Relations\MorphOneOrMany;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Traits\Macroable;
 use ReflectionClass;
+use WeakMap;
 
+/**
+ * References to models in JSON columns (docs/json-data.md). The part before `://` is a
+ * key of the registry (`JsonData::map()`), or, when it isn't mapped, the name of the
+ * relation it is declared with, as in 1.x.
+ */
 class JsonDataCast implements CastsAttributes
 {
     use Macroable;
@@ -25,6 +39,29 @@ class JsonDataCast implements CastsAttributes
      * JSON columns of a model are synced.
      */
     public const MEDIAS_HANDLE = 'json';
+
+    /**
+     * The values assigned to declared paths that are prepared when their model is saved
+     * (docs/decisions/0013), by model, attribute and path.
+     *
+     * @var WeakMap<Model, array<string, array<string, array{value: mixed, relation: array<string, mixed>, relationName: string}>>>|null
+     */
+    private static ?WeakMap $pending = null;
+
+    /**
+     * The models that mapped keys resolved to, by model and attribute, for the raw value
+     * they were resolved from.
+     *
+     * @var WeakMap<Model, array<string, array{raw: mixed, models: array<string, Model|null>}>>|null
+     */
+    private static ?WeakMap $resolved = null;
+
+    /**
+     * The model classes whose `saving` event prepares pending values, by event dispatcher.
+     *
+     * @var array<int, array<string, true>>
+     */
+    private static array $listening = [];
 
     /**
      * Cast the given value.
@@ -40,61 +77,74 @@ class JsonDataCast implements CastsAttributes
         $value = ! empty($value) ? json_decode($value, true) : null;
 
         if ($model instanceof HasJsonDataRelations) {
-            $value = self::normalizeJsonDataRelations(
-                $model->getJsonDataRelations($key, $value, $attributes)
-            )->reduce(function ($value, $relation) use ($model) {
-                $paths = $relation['path'];
+            $raw = $attributes[$key] ?? null;
+            $relations = self::relations($model, $key, $value, $attributes);
+            $resolved = self::resolveMappedReferences($model, $key, $raw, $value, $relations);
 
-                return Data::reducePaths($paths, $value, function ($newValue, $path, $item) use (
-                    $model,
-                    $relation
-                ) {
-                    if (
-                        isset($relation['skip']) &&
-                        is_callable($relation['skip']) &&
-                        call_user_func($relation['skip'], $item, $path, 'get', $model, $relation)
+            foreach ($relations as $relation) {
+                foreach (self::paths($relation) as $pattern) {
+                    $value = Data::reducePaths([$pattern], $value, function (mixed $newValue, int|string $path, mixed $item) use (
+                        $model,
+                        $relation,
+                        $pattern,
+                        $resolved
                     ) {
-                        return $newValue;
-                    }
-                    $relationName = is_callable($relation['relation'])
-                        ? call_user_func($relation['relation'], $item, $path, $model, $relation)
-                        : $relation['relation'];
-                    $getter =
-                        data_get($relation, 'get') ??
-                        (data_get(
-                            static::$macros,
-                            get_class($model).':'.$relationName.':get'
-                        ) ??
-                            data_get(static::$macros, $relationName.':get'));
-                    if (isset($getter)) {
-                        $newItem = $getter($item, $path, $model, $relation);
-                        data_set($newValue, $path, $newItem);
+                        $path = (string) $path;
+                        if (
+                            isset($relation['skip']) &&
+                            is_callable($relation['skip']) &&
+                            call_user_func($relation['skip'], $item, $path, 'get', $model, $relation)
+                        ) {
+                            return $newValue;
+                        }
+                        $relationName = self::relationName($model, $relation, $item, $path);
+                        $getter =
+                            data_get($relation, 'get') ??
+                            (data_get(
+                                static::$macros,
+                                get_class($model).':'.$relationName.':get'
+                            ) ??
+                                data_get(static::$macros, $relationName.':get'));
+                        if (isset($getter)) {
+                            $newItem = $getter($item, $path, $model, $relation);
+                            data_set($newValue, $path, $newItem);
+
+                            return $newValue;
+                        }
+                        if (! is_string($item)) {
+                            return $newValue;
+                        }
+
+                        $entry = JsonData::parse($item);
+                        if (is_null($entry)) {
+                            return $newValue;
+                        }
+
+                        if ($entry->isMapped()) {
+                            $related = self::relatedClass($model, $relationName);
+                            if (is_null($related) || ! $entry->target?->accepts($related)) {
+                                if (self::isRecursive($pattern)) {
+                                    return $newValue;
+                                }
+                                throw InvalidJsonReference::keyForAnotherModel($entry->key, (string) $related);
+                            }
+                            data_set($newValue, $path, $resolved[self::memoKey($entry->key, $relation, $entry->identifier)] ?? null);
+
+                            return $newValue;
+                        }
+
+                        // An unmapped key falls back to the relation of the same name, as in 1.x
+                        if (self::isRecursive($pattern) || $entry->key !== $relationName || ! method_exists($model, $relationName)) {
+                            return $newValue;
+                        }
+                        data_set($newValue, $path, self::resolveThroughRelation($model, $relationName, $relation, $entry->identifier));
 
                         return $newValue;
-                    }
-                    $lazy = data_get($relation, 'lazy', false);
-                    if (! is_string($item)) {
-                        return $newValue;
-                    }
-                    [$relation, $id] = self::getRelationAndIdFromPath($item) ?? [null, null];
-                    if (empty($relation) || empty($id)) {
-                        return $newValue;
-                    }
-                    $relationClass = $model->{$relation}();
-                    if ($relationClass instanceof BelongsTo) {
-                        $newItem = $model->{$relation};
-                    } else {
-                        $newItem =
-                            ! $lazy || $model->relationLoaded($relation)
-                                ? $model->{$relation}->find($id)
-                                : null;
-                    }
+                    });
+                }
+            }
 
-                    data_set($newValue, $path, $newItem);
-
-                    return $newValue;
-                });
-            }, $value);
+            $value = self::withPendingValues($model, $key, $value);
         }
 
         return $value;
@@ -107,80 +157,180 @@ class JsonDataCast implements CastsAttributes
      * @param  string  $key
      * @param  array  $value
      * @param  array  $attributes
-     * @return string
+     * @return array<string, mixed>|string|null
      */
     public function set($model, $key, $value, $attributes)
     {
         if ($model instanceof HasJsonDataRelations) {
-            $value = self::normalizeJsonDataRelations(
-                $model->getJsonDataRelations($key, $value, $attributes)
-            )->reduce(function ($value, $relation) use ($model) {
-                return Data::reducePaths($relation['path'], $value, function (
-                    $newValue,
-                    $path,
-                    $item
-                ) use ($model, $relation) {
-                    if (
-                        isset($relation['skip']) &&
-                        is_callable($relation['skip']) &&
-                        call_user_func($relation['skip'], $item, $path, 'set', $model, $relation)
-                    ) {
-                        return $newValue;
-                    }
-                    if (is_array($item) && array_is_list($item)) {
-                        return $newValue;
-                    }
-                    $relationName = is_callable($relation['relation'])
-                        ? call_user_func($relation['relation'], $item, $path, $model, $relation)
-                        : $relation['relation'];
-                    // Already serialized, for instance data read raw and written back
-                    if (self::isReferenceTo($item, $relationName)) {
-                        return $newValue;
-                    }
-                    $beforeSet =
-                        data_get($relation, 'before_set') ??
-                        (data_get(
-                            static::$macros,
-                            get_class($model).':'.$relationName.':before_set'
-                        ) ??
-                            data_get(static::$macros, $relationName.':before_set'));
-                    if (isset($beforeSet)) {
-                        $item = $beforeSet($item, $path, $model, $relation, $relationName);
-                    }
-                    $setter =
-                        data_get($relation, 'set') ??
-                        (data_get(
-                            static::$macros,
-                            get_class($model).':'.$relationName.':set'
-                        ) ??
-                            data_get(static::$macros, $relationName.':set'));
-                    if (isset($setter)) {
-                        $newItem = $setter($item, $path, $model, $relation, $relationName);
-                        data_set($newValue, $path, $newItem);
+            self::forgetPending($model, $key);
+            $rawStored = $model->getAttributes()[$key] ?? null;
+            $stored = is_string($rawStored) && $rawStored !== '' ? json_decode($rawStored, true) : null;
+
+            foreach (self::relations($model, $key, $value, $attributes) as $relation) {
+                foreach (self::paths($relation) as $pattern) {
+                    $recursive = self::isRecursive($pattern);
+                    $value = Data::reducePaths([$pattern], $value, function (
+                        mixed $newValue,
+                        int|string $path,
+                        mixed $item
+                    ) use ($model, $key, $relation, $recursive, $stored) {
+                        $path = (string) $path;
+                        if (
+                            isset($relation['skip']) &&
+                            is_callable($relation['skip']) &&
+                            call_user_func($relation['skip'], $item, $path, 'set', $model, $relation)
+                        ) {
+                            return $newValue;
+                        }
+                        if (is_array($item) && ($recursive || array_is_list($item))) {
+                            return $newValue;
+                        }
+                        $relationName = self::relationName($model, $relation, $item, $path);
+                        // Already serialized, for instance data read raw and written back
+                        if (self::isAcceptedReference($model, $item, $relationName)) {
+                            return $newValue;
+                        }
+                        if ($recursive && ! self::isModelOrEntity($item)) {
+                            return $newValue;
+                        }
+                        $beforeSet =
+                            data_get($relation, 'before_set') ??
+                            (data_get(
+                                static::$macros,
+                                get_class($model).':'.$relationName.':before_set'
+                            ) ??
+                                data_get(static::$macros, $relationName.':before_set'));
+                        if (isset($beforeSet)) {
+                            $item = $beforeSet($item, $path, $model, $relation, $relationName);
+                        }
+                        $setter =
+                            data_get($relation, 'set') ??
+                            (data_get(
+                                static::$macros,
+                                get_class($model).':'.$relationName.':set'
+                            ) ??
+                                data_get(static::$macros, $relationName.':set'));
+                        if (isset($setter)) {
+                            $newItem = $setter($item, $path, $model, $relation, $relationName);
+                            data_set($newValue, $path, $newItem);
+
+                            return $newValue;
+                        }
+                        if (is_null($item) || self::isAcceptedReference($model, $item, $relationName)) {
+                            data_set($newValue, $path, $item);
+
+                            return $newValue;
+                        }
+
+                        if (self::defersPreparing($model)) {
+                            self::addPending($model, $key, $path, $item, $relation, $relationName);
+                            $previous = data_get($stored, $path);
+                            data_set($newValue, $path, self::isAcceptedReference($model, $previous, $relationName) ? $previous : null);
+
+                            return $newValue;
+                        }
+
+                        data_set($newValue, $path, self::prepareReference($model, $key, $path, $item, $relation, $relationName));
 
                         return $newValue;
-                    }
-                    $newItem = self::getPathFromItem($item, $relationName);
-                    data_set($newValue, $path, $newItem);
-
-                    return $newValue;
-                });
-            }, $value);
+                    });
+                }
+            }
         }
 
         if ($model instanceof HasJsonDataColumnExtract) {
-            $columnsExtract = $model->getJsonDataColumnExtract($key, $value, $attributes);
-            $return = [
-                $key => ! is_null($value) ? json_encode($value) : null,
-            ];
-            foreach ($columnsExtract as $path => $column) {
-                $return[$column] = data_get($value, $path);
-            }
-
-            return $return;
+            return array_merge(
+                [$key => ! is_null($value) ? json_encode($value, JSON_THROW_ON_ERROR) : null],
+                self::extractedColumns($model, $key, $value, $attributes),
+            );
         }
 
-        return ! is_null($value) ? json_encode($value) : null;
+        return ! is_null($value) ? json_encode($value, JSON_THROW_ON_ERROR) : null;
+    }
+
+    /**
+     * The values of a JSON attribute that the model copies into columns.
+     *
+     * @param  array<array-key, mixed>  $attributes
+     * @return array<string, mixed>
+     */
+    protected static function extractedColumns(HasJsonDataColumnExtract $model, string $key, mixed $value, array $attributes): array
+    {
+        $columns = $model->getJsonDataColumnExtract($key, $value, $attributes);
+        $extracted = [];
+        foreach (is_array($columns) ? $columns : [] as $path => $column) {
+            if (is_string($column)) {
+                $extracted[$column] = data_get($value, (string) $path);
+            }
+        }
+
+        return $extracted;
+    }
+
+    /**
+     * The relations a model declares for a JSON attribute, normalized.
+     *
+     * @param  array<array-key, mixed>  $attributes
+     * @return list<array<string, mixed>>
+     */
+    protected static function relations(HasJsonDataRelations $model, string $key, mixed $value, array $attributes): array
+    {
+        $declared = $model->getJsonDataRelations($key, $value, $attributes);
+        $relations = [];
+        foreach (self::normalizeJsonDataRelations(is_array($declared) || $declared instanceof Collection ? $declared : []) as $relation) {
+            if (is_array($relation)) {
+                $relations[] = array_filter($relation, fn (mixed $option) => is_string($option), ARRAY_FILTER_USE_KEY);
+            }
+        }
+
+        return $relations;
+    }
+
+    /**
+     * The path patterns of a normalized relation.
+     *
+     * @param  array<string, mixed>  $relation
+     * @return list<string>
+     */
+    protected static function paths(array $relation): array
+    {
+        $paths = $relation['path'] ?? [];
+
+        return array_values(array_filter(is_array($paths) ? $paths : [$paths], 'is_string'));
+    }
+
+    /**
+     * Turns the pending values of a model into references, before it is saved: the
+     * handler of each value's key prepares it and checks that the model may refer to it.
+     */
+    public static function preparePending(Model $model): void
+    {
+        $pending = self::pendingStore()[$model] ?? [];
+        if (count($pending) === 0) {
+            return;
+        }
+        unset(self::pendingStore()[$model]);
+
+        foreach ($pending as $key => $values) {
+            $rawValue = $model->getAttributes()[$key] ?? null;
+            $value = is_string($rawValue) && $rawValue !== '' ? json_decode($rawValue, true) : [];
+            foreach ($values as $path => $item) {
+                data_set($value, $path, self::prepareReference(
+                    $model,
+                    $key,
+                    $path,
+                    $item['value'],
+                    $item['relation'],
+                    $item['relationName']
+                ));
+            }
+            // Written raw: the other paths were sorted when they were assigned
+            $attributes = [$key => json_encode($value, JSON_THROW_ON_ERROR)];
+            if ($model instanceof HasJsonDataColumnExtract) {
+                $attributes = array_merge($attributes, self::extractedColumns($model, $key, $value, $model->getAttributes()));
+            }
+            $model->setRawAttributes(array_merge($model->getAttributes(), $attributes));
+        }
     }
 
     public static function syncRelations($model)
@@ -214,41 +364,28 @@ class JsonDataCast implements CastsAttributes
             if (! is_array($value)) {
                 continue;
             }
-            $normalizedRelations = self::normalizeJsonDataRelations(
-                $model->getJsonDataRelations($key, $value, $attributes)
-            );
-            $relationsMap = $normalizedRelations
-                ->filter(function ($relation) {
-                    return data_get($relation, 'sync', true);
-                })
-                ->reduce(function ($relationsMap, $relation) use ($model, $value) {
-                    $relationName = is_callable($relation['relation'])
-                        ? call_user_func($relation['relation'], null, null, $model, $relation)
-                        : $relation['relation'];
-                    if (! isset($relationsMap[$relationName])) {
-                        $relationsMap[$relationName] = [
-                            'relation' => $relation,
-                            'ids' => [],
-                        ];
-                    }
-                    $paths = $relation['path'];
-                    $map = self::getRelationsAndsIdsFromPaths($paths, $value);
-                    foreach ($map as $relationName => $ids) {
-                        $relationsMap[$relationName] = [
-                            'relation' => $relation,
-                            'ids' => collect(data_get($relationsMap, $relationName.'.ids', []))
-                                ->merge($ids)
-                                ->unique()
-                                ->values()
-                                ->toArray(),
-                        ];
-                    }
-
-                    return $relationsMap;
-                }, $relationsMap);
+            foreach (self::relations($model, (string) $key, $value, $attributes) as $relation) {
+                if (! ($relation['sync'] ?? true)) {
+                    continue;
+                }
+                $relationName = self::relationName($model, $relation, null, null);
+                $relationsMap[$relationName] = [
+                    'relation' => $relation,
+                    'ids' => array_values(array_unique(
+                        array_merge(
+                            $relationsMap[$relationName]['ids'] ?? [],
+                            self::relatedKeys($model, $relationName, self::paths($relation), $value),
+                        ),
+                        SORT_REGULAR,
+                    )),
+                ];
+            }
         }
 
         foreach ($relationsMap as $relationName => $item) {
+            if (! method_exists($model, $relationName)) {
+                continue;
+            }
             $relationClass = $model->{$relationName}();
             $ids = $item['ids'];
             $relation = $item['relation'];
@@ -262,7 +399,7 @@ class JsonDataCast implements CastsAttributes
                 // Only the rows of the JSON references: the media attached otherwise stay.
                 // Media keys are integers; a reference that isn't one can't be a media.
                 $mediaIds = [];
-                foreach (is_array($ids) ? $ids : [] as $id) {
+                foreach ($ids as $id) {
                     if (is_int($id) || (is_string($id) && ctype_digit($id))) {
                         $mediaIds[] = (int) $id;
                     }
@@ -273,7 +410,7 @@ class JsonDataCast implements CastsAttributes
             } elseif ($relationClass instanceof BelongsTo && count($ids) > 0) {
                 $relationClass->associate($ids[0]);
                 self::saveForeignKey($model, $relationClass);
-            } elseif ($relationClass instanceof BelongsTo && count($ids) === 0) {
+            } elseif ($relationClass instanceof BelongsTo) {
                 $relationClass->dissociate();
             } elseif ($relationClass instanceof MorphOneOrMany && count($ids) > 0) {
                 // Only the rows without a parent: a row of another parent stays there
@@ -298,7 +435,65 @@ class JsonDataCast implements CastsAttributes
             }
         }
 
+        unset(self::resolvedStore()[$model]);
+
         return $relationsMap;
+    }
+
+    /**
+     * The keys of the related models referenced at a relation's paths: the identifiers of
+     * the mapped keys whose model is the related model, converted to its key when their
+     * column isn't the key, and, as in 1.x, the identifiers of the key named after the
+     * relation when it isn't mapped.
+     *
+     * @param  array<int, string>  $paths
+     * @param  array<array-key, mixed>  $data
+     * @return list<mixed>
+     */
+    protected static function relatedKeys(Model $model, string $relationName, array $paths, array $data): array
+    {
+        $related = self::relatedClass($model, $relationName);
+        $keys = [];
+        $byKey = [];
+        foreach ($paths as $pattern) {
+            foreach (Data::matchingPaths([$pattern], $data) as $path) {
+                $item = data_get($data, $path);
+                $entry = is_string($item) ? JsonData::parse($item) : null;
+                if (is_null($entry)) {
+                    continue;
+                }
+                if ($entry->isMapped()) {
+                    if (! is_null($related) && $entry->target?->accepts($related)) {
+                        $byKey[$entry->key][] = $entry->identifier;
+                    }
+                } elseif (! self::isRecursive($pattern) && $entry->key === $relationName) {
+                    $keys[] = $entry->identifier;
+                }
+            }
+        }
+
+        foreach ($byKey as $key => $identifiers) {
+            $target = JsonData::target($key);
+            if (is_null($target) || is_null($related)) {
+                continue;
+            }
+            $relatedModel = new $related;
+            if ($target->column() === $relatedModel->getKeyName()) {
+                array_push($keys, ...$identifiers);
+
+                continue;
+            }
+            $found = $relatedModel->newQuery()
+                ->whereIn($target->column(), array_values(array_unique($identifiers)))
+                ->pluck($relatedModel->getKeyName(), $target->column());
+            foreach ($identifiers as $identifier) {
+                if ($found->has($identifier)) {
+                    $keys[] = $found->get($identifier);
+                }
+            }
+        }
+
+        return array_values(array_unique($keys, SORT_REGULAR));
     }
 
     /**
@@ -373,26 +568,6 @@ class JsonDataCast implements CastsAttributes
         return $relations;
     }
 
-    protected static function getRelationsAndsIdsFromPaths($paths, array $data)
-    {
-        $ids = Data::matchingPaths($paths, $data)->reduce(function ($map, $path) use ($data) {
-            $itemPath = data_get($data, $path);
-            [$relation, $id] = self::getRelationAndIdFromPath($itemPath) ?? [null, null];
-
-            return ! empty($relation) && ! empty($id)
-                ? array_merge($map, [
-                    $relation => collect(data_get($map, $relation, []))
-                        ->push($id)
-                        ->unique()
-                        ->values()
-                        ->toArray(),
-                ])
-                : $map;
-        }, []);
-
-        return $ids;
-    }
-
     public static function getPathFromItem($item, $pathPrefix): ?string
     {
         $id = to_id($item);
@@ -428,12 +603,10 @@ class JsonDataCast implements CastsAttributes
             return $value;
         }
 
-        $paths = self::normalizeJsonDataRelations(
-            $model->getJsonDataRelations($key, $storedValue, $model->getAttributes())
-        )
-            ->pluck('path')
-            ->flatten()
-            ->all();
+        $paths = [];
+        foreach (self::relations($model, $key, $storedValue, $model->getAttributes()) as $relation) {
+            array_push($paths, ...self::paths($relation));
+        }
         foreach (Data::matchingPaths($paths, $storedValue) as $path) {
             $reference = data_get($storedValue, $path);
             if (! is_null(self::getRelationAndIdFromPath($reference)) && is_null(data_get($value, $path))) {
@@ -442,19 +615,6 @@ class JsonDataCast implements CastsAttributes
         }
 
         return $value;
-    }
-
-    /**
-     * Whether the item is a reference to the relation, as stored.
-     */
-    protected static function isReferenceTo($item, $relationName): bool
-    {
-        if (! is_string($item) || ! is_string($relationName)) {
-            return false;
-        }
-        [$relation] = self::getRelationAndIdFromPath($item) ?? [null];
-
-        return $relation === $relationName;
     }
 
     public static function getRelationAndIdFromPath($path): ?array
@@ -467,5 +627,329 @@ class JsonDataCast implements CastsAttributes
         }
 
         return null;
+    }
+
+    /**
+     * Resolves, in one call to each key's handler, the references of mapped keys at the
+     * declared paths of a model's attribute, and memoizes them for its raw value.
+     *
+     * @param  list<array<string, mixed>>  $relations
+     * @return array<string, Model|null> By key, handler and identifier (memoKey())
+     */
+    protected static function resolveMappedReferences(Model $model, string $key, mixed $raw, mixed $value, array $relations): array
+    {
+        $memo = self::resolvedStore()[$model][$key] ?? null;
+        $resolved = ! is_null($memo) && $memo['raw'] === $raw ? $memo['models'] : [];
+
+        /** @var array<string, array{entry: JsonReferenceEntry, relation: array<string, mixed>, relationName: string, identifiers: list<string>}> $missing */
+        $missing = [];
+        if (is_array($value)) {
+            foreach ($relations as $relation) {
+                $relationName = self::relationName($model, $relation, null, null);
+                foreach (self::paths($relation) as $pattern) {
+                    foreach (Data::matchingPaths([$pattern], $value) as $path) {
+                        $item = data_get($value, $path);
+                        $entry = is_string($item) ? JsonData::parse($item) : null;
+                        if (is_null($entry) || ! $entry->isMapped()) {
+                            continue;
+                        }
+                        $memoKey = self::memoKey($entry->key, $relation, $entry->identifier);
+                        if (array_key_exists($memoKey, $resolved)) {
+                            continue;
+                        }
+                        $group = self::memoKey($entry->key, $relation, '');
+                        $missing[$group] ??= ['entry' => $entry, 'relation' => $relation, 'relationName' => $relationName, 'identifiers' => []];
+                        $missing[$group]['identifiers'][] = $entry->identifier;
+                    }
+                }
+            }
+        }
+
+        foreach ($missing as $group) {
+            $entry = $group['entry'];
+            $target = $entry->target;
+            if (is_null($target)) {
+                continue;
+            }
+            $context = new ReferenceContext(
+                operation: ReferenceOperation::Read,
+                key: $entry->key,
+                target: $target,
+                ownerClass: $model::class,
+                owner: $model,
+                attribute: $key,
+                relation: $group['relationName'],
+            );
+            $handler = self::handler($target, $group['relation']);
+            $models = $handler->resolveMany(array_values(array_unique($group['identifiers'])), $context);
+            foreach ($group['identifiers'] as $identifier) {
+                $found = $models[$identifier] ?? null;
+                $resolved[self::memoKey($entry->key, $group['relation'], $identifier)] =
+                    ! is_null($found) && $handler->allows($found, $context) ? $found : null;
+            }
+        }
+
+        if (count($missing) > 0 || is_null($memo) || $memo['raw'] !== $raw) {
+            self::resolvedStore()[$model] = array_merge(self::resolvedStore()[$model] ?? [], [
+                $key => ['raw' => $raw, 'models' => $resolved],
+            ]);
+        }
+
+        return $resolved;
+    }
+
+    /**
+     * A reference of an unmapped key, through the owner's relation of the same name, as in
+     * 1.x: only the rows attached to the owner resolve (docs/decisions/0016).
+     *
+     * @param  array<string, mixed>  $relation
+     */
+    protected static function resolveThroughRelation(Model $model, string $relationName, array $relation, string $id): mixed
+    {
+        $relationClass = $model->{$relationName}();
+        if ($relationClass instanceof BelongsTo) {
+            return $model->{$relationName};
+        }
+        $lazy = data_get($relation, 'lazy', false);
+
+        return ! $lazy || $model->relationLoaded($relationName)
+            ? $model->{$relationName}->find($id)
+            : null;
+    }
+
+    /**
+     * Turns a value into a reference with the relation's write key, through the key's
+     * handler: the relation's `key` option, else the first key mapped to the related model,
+     * else the relation's name.
+     *
+     * @param  array<string, mixed>  $relation
+     */
+    protected static function prepareReference(Model $model, string $key, string $path, mixed $value, array $relation, string $relationName): ?string
+    {
+        [$writeKey, $target] = self::writeTarget($model, $relation, $relationName);
+        if (is_null($target)) {
+            return self::unpreparable($model, $relationName);
+        }
+
+        $context = new ReferenceContext(
+            operation: ReferenceOperation::Write,
+            key: $writeKey,
+            target: $target,
+            ownerClass: $model::class,
+            owner: $model,
+            attribute: $key,
+            path: $path,
+            relation: $relationName,
+        );
+        $handler = self::handler($target, $relation);
+        $prepared = $handler->prepare($value, $context);
+        if (is_null($prepared)) {
+            return self::unpreparable($model, $relationName);
+        }
+        if (! $handler->allows($prepared, $context)) {
+            throw ReferenceNotAllowed::for($prepared, $context);
+        }
+        $identifier = $target->identifierOf($prepared);
+
+        return is_null($identifier) ? self::unpreparable($model, $relationName) : $writeKey.'://'.$identifier;
+    }
+
+    /**
+     * The key a relation writes and its target.
+     *
+     * @param  array<string, mixed>  $relation
+     * @return array{string, JsonReference|null}
+     */
+    protected static function writeTarget(Model $model, array $relation, string $relationName): array
+    {
+        $related = self::relatedClass($model, $relationName);
+        $key = $relation['key'] ?? null;
+        if (is_string($key)) {
+            $target = JsonData::target($key) ?? throw InvalidJsonReference::unmappedKey($key);
+            if (! is_null($related) && ! $target->accepts($related)) {
+                throw InvalidJsonReference::keyForAnotherModel($key, $related);
+            }
+
+            return [$key, $target];
+        }
+
+        $mapped = is_null($related) ? null : JsonData::keyFor($related);
+        if (! is_null($mapped)) {
+            return [$mapped, JsonData::target($mapped)];
+        }
+
+        if (JsonData::enforcesMap()) {
+            throw InvalidJsonReference::unmappedModel($related ?? $relationName);
+        }
+
+        return [$relationName, is_null($related) ? null : JsonReference::to($related)];
+    }
+
+    protected static function unpreparable(Model $model, string $relationName): ?string
+    {
+        if (JsonData::enforcesMap()) {
+            throw new InvalidJsonReference("A value at a path of [{$relationName}] on [".$model::class.'] is not something its reference handler takes.');
+        }
+
+        return null;
+    }
+
+    /**
+     * The handler of a path's `using` option, or of its key, or the default one.
+     *
+     * @param  array<string, mixed>  $relation
+     */
+    protected static function handler(JsonReference $target, array $relation): ReferenceHandler
+    {
+        $using = $relation['using'] ?? null;
+        $class = is_string($using) ? $using : ($target->handler ?? ModelReferences::class);
+        $handler = Container::getInstance()->make($class);
+        if (! $handler instanceof ReferenceHandler) {
+            throw new InvalidJsonReference("[{$class}] does not implement ".ReferenceHandler::class.'.');
+        }
+
+        return $handler;
+    }
+
+    /**
+     * Whether a value is a stored reference that the relation accepts: a mapped key whose
+     * model is the related model, or, without a map, the relation's own name.
+     */
+    protected static function isAcceptedReference(Model $model, mixed $item, mixed $relationName): bool
+    {
+        if (! is_string($item) || ! is_string($relationName)) {
+            return false;
+        }
+        $entry = JsonData::parse($item);
+        if (is_null($entry)) {
+            return false;
+        }
+        if (! $entry->isMapped()) {
+            return $entry->key === $relationName;
+        }
+        $related = self::relatedClass($model, $relationName);
+
+        return ! is_null($related) && (bool) $entry->target?->accepts($related);
+    }
+
+    protected static function isModelOrEntity(mixed $item): bool
+    {
+        return $item instanceof Model || $item instanceof Entity || $item instanceof HasModel || $item instanceof ToEntity;
+    }
+
+    /**
+     * Whether a path pattern is recursive (`body.**`): only mapped keys are references there.
+     */
+    protected static function isRecursive(string $pattern): bool
+    {
+        return str_contains($pattern, '**');
+    }
+
+    /**
+     * @param  array<string, mixed>  $relation
+     */
+    protected static function relationName(Model $model, array $relation, mixed $item, mixed $path): string
+    {
+        $relationName = $relation['relation'] ?? null;
+        $name = is_callable($relationName)
+            ? call_user_func($relationName, $item, $path, $model, $relation)
+            : $relationName;
+
+        return is_string($name) ? $name : '';
+    }
+
+    /**
+     * The class of a relation's related model, or null when the model has no such relation.
+     *
+     * @return class-string<Model>|null
+     */
+    protected static function relatedClass(Model $model, string $relationName): ?string
+    {
+        if ($relationName === '' || ! method_exists($model, $relationName)) {
+            return null;
+        }
+        $relation = $model->{$relationName}();
+
+        return $relation instanceof Relation ? $relation->getRelated()::class : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $relation
+     */
+    protected static function memoKey(string $key, array $relation, string $identifier): string
+    {
+        $using = $relation['using'] ?? '';
+
+        return $key.'|'.(is_string($using) ? $using : '').'|'.$identifier;
+    }
+
+    /**
+     * Whether values are prepared when the model is saved: a `saving` listener is
+     * registered for the model's class, once per event dispatcher.
+     */
+    protected static function defersPreparing(Model $model): bool
+    {
+        $dispatcher = $model::getEventDispatcher();
+        if (is_null($dispatcher)) {
+            return false;
+        }
+        $id = spl_object_id($dispatcher);
+        if (! isset(self::$listening[$id][$model::class])) {
+            $dispatcher->listen('eloquent.saving: '.$model::class, function (Model $saving) {
+                self::preparePending($saving);
+            });
+            self::$listening[$id][$model::class] = true;
+        }
+
+        return true;
+    }
+
+    /**
+     * @param  array<string, mixed>  $relation
+     */
+    protected static function addPending(Model $model, string $key, string $path, mixed $value, array $relation, string $relationName): void
+    {
+        $pending = self::pendingStore()[$model] ?? [];
+        $pending[$key][$path] = ['value' => $value, 'relation' => $relation, 'relationName' => $relationName];
+        self::pendingStore()[$model] = $pending;
+    }
+
+    protected static function forgetPending(Model $model, string $key): void
+    {
+        $pending = self::pendingStore()[$model] ?? [];
+        unset($pending[$key]);
+        if (count($pending) === 0) {
+            unset(self::pendingStore()[$model]);
+        } else {
+            self::pendingStore()[$model] = $pending;
+        }
+    }
+
+    /**
+     * Puts the pending values back where they were assigned, until the model is saved.
+     */
+    protected static function withPendingValues(Model $model, string $key, mixed $value): mixed
+    {
+        foreach (self::pendingStore()[$model][$key] ?? [] as $path => $item) {
+            data_set($value, $path, $item['value']);
+        }
+
+        return $value;
+    }
+
+    /**
+     * @return WeakMap<Model, array<string, array<string, array{value: mixed, relation: array<string, mixed>, relationName: string}>>>
+     */
+    private static function pendingStore(): WeakMap
+    {
+        return self::$pending ??= new WeakMap;
+    }
+
+    /**
+     * @return WeakMap<Model, array<string, array{raw: mixed, models: array<string, Model|null>}>>
+     */
+    private static function resolvedStore(): WeakMap
+    {
+        return self::$resolved ??= new WeakMap;
     }
 }

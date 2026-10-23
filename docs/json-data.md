@@ -181,7 +181,7 @@ $repository->withJsonReferences()->get($query);  // in a repository
 
 `JsonData::load()` reads the references of every model, groups them by key, calls each handler's `resolveMany()` once, and seeds each model's memoized value. A model of the collection read afterwards doesn't query again.
 
-**Open:** 1.x resolves a reference through the owner's loaded relation (`$model->medias->find($id)`), so only rows attached to the owner resolve. The default handler resolves by the key's column (`whereIn()`), so a row that is not attached resolves too, unless `allows()` refuses it. For example, a menu that points to a page of another contest stopped resolving in 1.1.8 ([#64](https://github.com/folkloreinc/laravel-folklore/pull/64)) and would resolve again. Two options: the fallback of an unmapped key resolves through the owner's relation, eager-loaded on the whole collection (1.x behaviour, batched); or the default handler always resolves by column, and scoping is `allows()`'s job.
+A key that isn't mapped resolves as in 1.x, through the owner's relation of the same name, so only the rows attached to the owner resolve ([decisions/0016](decisions/0016-scope-of-unmapped-keys.md)). A mapped key resolves by its column through its handler, and `allows()` scopes it.
 
 ## Handlers
 
@@ -218,7 +218,9 @@ The #56 design passes references to `resolveMany()`. This spec passes identifier
 
 ### Default handler
 
-Used by every key mapped without a handler, and by the fallback of unmapped keys.
+`Folklore\Eloquent\ModelReferences`.
+
+Used by every key mapped without a handler, and by unmapped keys when a value is written.
 
 - `prepare()` takes a model of the key's model, an entity (`ToEntity`, `Entity`), a reference of an accepted key, or an identifier (a string or an integer). Anything else returns `null`.
 - `resolveMany()` is one `whereIn()` on the key's column, through the related model's query, so its global scopes (soft deletes, a tenant scope) apply.
@@ -308,7 +310,8 @@ MediaReferences::allowUsing(fn (Media $media, Model $owner) => $media->workspace
 | 1.x | 2.0 | Until 3.0 |
 |---|---|---|
 | Key = relation name | Key = registry entry; unmapped keys fall back to the relation of the same name | Fallback kept; off with `enforceMap()` |
-| `relation://id` resolved with `$model->{relation}->find($id)` | Resolved in batches by the key's handler | — |
+| `relation://id` resolved with `$model->{relation}->find($id)` | Mapped keys resolved in batches by their handler; unmapped keys through the relation, as in 1.x | — |
+| A string at a reference path that isn't a reference of the relation (a URL, `blocks://1` under a `medias` path) taken for an id: written `medias://https://…`, synced to the relation named in it | Not a reference: read as is; written `null` when the handler can't prepare it; not synced | — |
 | Values turned into references in `set()` | References kept in `set()`; other values prepared on `saving` | The deprecated callables still run in `set()` |
 | `JsonDataCast::macro('{relation}:get')`, `':set'`, `':before_set'`, per model or global | Handlers per key, `using` per path | Macros run, deprecated |
 | `get`, `set`, `before_set` options | Handlers | Run, deprecated |
