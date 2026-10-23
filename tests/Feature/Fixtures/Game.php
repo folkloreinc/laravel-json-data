@@ -6,7 +6,7 @@ use Folklore\Contracts\Eloquent\HasJsonDataColumnExtract;
 use Folklore\Contracts\Eloquent\HasJsonDataRelations;
 use Folklore\Contracts\Entities\ToEntity;
 use Folklore\Eloquent\JsonDataCast;
-use Folklore\Mediatheque\Support\Traits\HasMedias;
+use Folklore\Mediatheque\Concerns\HasMedias;
 use Folklore\Models\Block;
 use Illuminate\Database\Eloquent\Model;
 

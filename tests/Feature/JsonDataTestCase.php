@@ -4,8 +4,8 @@ namespace Folklore\Tests\Feature\Eloquent;
 
 use Cviebrock\EloquentSluggable\ServiceProvider as SluggableServiceProvider;
 use Folklore\Eloquent\JsonDataCast;
-use Folklore\Mediatheque\Contracts\Models\Media;
 use Folklore\Models\Block;
+use Folklore\Models\Media;
 use Folklore\Tests\TestCase;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
@@ -33,6 +33,7 @@ abstract class JsonDataTestCase extends TestCase
         parent::setUp();
 
         $this->artisan('migrate', ['--database' => 'testbench']);
+        $this->migrateMediatheque();
         foreach (['000000_create_pages_table', '000001_create_blocks_table', '000002_create_blocks_pivot'] as $migration) {
             $this->artisan('migrate', [
                 '--database' => 'testbench',
@@ -60,8 +61,13 @@ abstract class JsonDataTestCase extends TestCase
 
     protected function makeMedia(): Media
     {
-        $media = media(public_path('folklore.png'));
-        $media->save();
+        $media = new Media;
+        $media->forceFill([
+            'type' => 'image',
+            'name' => 'folklore',
+            'status' => 'ready',
+            'visibility' => 'public',
+        ])->save();
 
         return $media;
     }

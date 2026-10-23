@@ -21,6 +21,12 @@ class JsonDataCast implements CastsAttributes
     use Macroable;
 
     /**
+     * The handle of laravel-mediatheque's pivot under which the media referenced in the
+     * JSON columns of a model are synced.
+     */
+    public const MEDIAS_HANDLE = 'json';
+
+    /**
      * Cast the given value.
      *
      * @param  Model  $model
@@ -252,6 +258,16 @@ class JsonDataCast implements CastsAttributes
             }
             if (isset($relation['sync'])) {
                 $relation['sync']($relationClass, $ids, $relation);
+            } elseif (self::syncsMediasByHandle($model, $relationName) && method_exists($model, 'syncMedias')) {
+                // Only the rows of the JSON references: the media attached otherwise stay.
+                // Media keys are integers; a reference that isn't one can't be a media.
+                $mediaIds = [];
+                foreach (is_array($ids) ? $ids : [] as $id) {
+                    if (is_int($id) || (is_string($id) && ctype_digit($id))) {
+                        $mediaIds[] = (int) $id;
+                    }
+                }
+                $model->syncMedias([self::MEDIAS_HANDLE => $mediaIds]);
             } elseif ($relationClass instanceof BelongsToMany) {
                 $relationClass->sync($ids);
             } elseif ($relationClass instanceof BelongsTo && count($ids) > 0) {
@@ -283,6 +299,18 @@ class JsonDataCast implements CastsAttributes
         }
 
         return $relationsMap;
+    }
+
+    /**
+     * Whether the relation is the `medias()` of laravel-mediatheque 2's HasMedias, whose
+     * pivot holds the usages of every media: the references of JSON data are synced under
+     * their own handle, so that the media attached otherwise (`attachMedia()`) stay
+     * (laravel-mediatheque's docs/decisions/0020).
+     */
+    protected static function syncsMediasByHandle(Model $model, mixed $relationName): bool
+    {
+        return $relationName === 'medias'
+            && in_array('Folklore\\Mediatheque\\Concerns\\HasMedias', class_uses_recursive($model), true);
     }
 
     /**
