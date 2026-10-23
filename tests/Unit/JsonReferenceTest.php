@@ -8,9 +8,11 @@ use Folklore\Tests\Unit\Eloquent\Fixtures\ApplicationMedia;
 use Folklore\Tests\Unit\Eloquent\Fixtures\MediaHandler;
 use Folklore\Tests\Unit\Eloquent\Fixtures\ReferencedMedia;
 use Folklore\Tests\Unit\Eloquent\Fixtures\ReferencedPrize;
+use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use stdClass;
 
+#[Group('core')]
 class JsonReferenceTest extends TestCase
 {
     public function test_a_target_is_identified_by_the_model_key_by_default()
