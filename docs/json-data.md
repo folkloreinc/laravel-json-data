@@ -323,7 +323,7 @@ Both use `Folklore\Eloquent\MediaReferences`, so either one resolves in a relati
 `MediaReferences`:
 
 - `prepare()` accepts a media model, a media entity, a reference of either key, a uid, a 1.x id, a Panneau 5 media value (`['id' => 'med_…']`), an uploaded file, a file or a URL, as far as `site.medias.references.accept` allows ([below](#accepted-forms)). Files are ingested with `Mediatheque::ingest()`, which replaces the `SyncsJsonDataRelations` traits several sites copied. A URL is downloaded with the medias repository's limits (`site.medias.download`), then ingested, until the mediatheque ingests URLs behind its SSRF guard. Files and URLs are ingested when the owner is saved ([decisions/0013](decisions/0013-defer-prepare-until-saving.md)).
-- `resolveMany()` goes through `Mediatheque::resolveMany()`, one query per form.
+- `resolveMany()` runs one query on the key's column through the media model, with its files, as `Mediatheque::resolveMany()` does. It doesn't call the facade, so that references resolve under `Mediatheque::fake()` too ([below](#testing-with-the-mediatheques-fake)).
 - Applications plug their tenancy into it:
 
 ```php
@@ -362,6 +362,12 @@ A value that reaches a media path, from a form for example, is downloaded by the
 - An unknown form throws an `InvalidArgumentException`.
 - A reference of a mapped key is kept as it is when it is written, without `prepare()` ([Writing](#when-a-value-is-assigned)). With both keys mapped, `medias://12` is still written under the strict forms: a project that refuses internal ids sets `other_key` to `false` too.
 - When URLs are accepted, set `site.medias.download.allowed_hosts`: it is `null` by default, which allows every host.
+
+### Testing with the mediatheque's fake
+
+`Mediatheque::fake()` replaces ingestion, probing and renditions, in memory. `MediaReferences` resolves references from the database, not through the facade, so a media created in the database (with a factory, for example) reads and writes as usual under the fake ([#98](https://github.com/folkloreinc/laravel-folklore/issues/98)). Its `resolve()` and `resolveMany()` know only the media it ingested itself.
+
+A file or a URL written to a media path is ingested by the fake, which returns a `FakeMedia`: it isn't a model, so the value is written `null`. A test that writes files to JSON data creates its media in the database first, or doesn't fake the mediatheque.
 
 ## Repositories
 
