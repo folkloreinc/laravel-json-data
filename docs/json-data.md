@@ -240,7 +240,12 @@ Applications extend it rather than implement the contract from scratch.
 
 ## Syncing
 
-After the model is saved, the references at each relation's paths are synced to that relation, as in 1.x, by the kind of relation:
+After the model is saved, the references at each relation's paths are synced to that relation, as in 1.x, by the kind of relation. The cast does it in a `saved` listener, registered with its `saving` one, so a model is synced however it is saved: `$model->save()`, `create()`, a factory, a seeder, an application repository, or the base repository ([#97](https://github.com/folkloreinc/laravel-folklore/issues/97)). 1.x only synced in the base repository.
+
+- Only the relations declared in the JSON attributes that changed are synced. A relation gathers its references from every JSON attribute of the model.
+- A model saved without events (`saveQuietly()`, `withoutEvents()`) isn't synced, nor are rows written another way (raw SQL, imports). `JsonDataCast::syncRelations($model)` syncs them, and [#86](https://github.com/folkloreinc/laravel-folklore/issues/86) plans a command for stored rows.
+- The base repository doesn't sync a second time. Its `syncRelations($model, $data)` stays as a hook for a repository's own relations, after `saveData()`.
+
 
 | Relation | Sync |
 |---|---|
@@ -250,7 +255,7 @@ After the model is saved, the references at each relation's paths are synced to 
 
 - Only references whose key resolves to the relation's related model count. References of several keys to the same model (`medias://` and `media://`) are synced together, by the related model's key.
 - `sync => false` and a `sync` callable behave as in 1.x.
-- Syncing doesn't call `refresh()` on the model anymore: it unsets the synced relations and the memoized values.
+- Syncing doesn't call `refresh()` on the model anymore, nor does the base repository after it: it unsets the synced relations and the memoized values.
 
 Media references sync into `laravel-mediatheque` 2's `medias_pivot`, which is also its usage graph, with its `HasMedias::syncMedias()`, under the handle `json` (`JsonDataCast::MEDIAS_HANDLE`): the sync only replaces its own rows, so a media attached otherwise (`attachMedia($media, 'cover')`) stays ([laravel-mediatheque's decision 0020](https://github.com/folkloreinc/laravel-mediatheque/blob/v2.x/docs/decisions/0020-attachments-by-handle-and-usages.md)). One handle serves every JSON column of a model, since the cast gathers the references of a relation across its columns. A reference whose identifier is not a media key (a URL, a reference of another relation) is not synced; 1.x wrote it to the pivot. Rows that 1.x wrote for JSON references have no handle: an upgraded site removes them before the first sync ([upgrade.md](upgrade.md)).
 
@@ -324,6 +329,7 @@ MediaReferences::allowUsing(fn (Media $media, ?Model $owner) => $media->workspac
 | `lazy` | `JsonData::load()`, `withJsonReferences()` | Kept, deprecated |
 | `**` undocumented | `**` specified | — |
 | One JSON column per repository (`$jsonAttributeName`) | `$jsonAttributes` | Kept, deprecated |
+| Synced by the base repository, after `saveData()` | Synced by the cast after any save with events | — |
 | `syncRelations()` then `refresh()` | Relations and memoized values unset | — |
 
 Every 1.1 test of the cast passes on 2.0 without changes, except those that assert a deprecated behaviour's notice. The characterization tests added in 1.1.8 ([#60](https://github.com/folkloreinc/laravel-folklore/pull/60)) are the reference. Three of them change on purpose, as the breaking changes of 2.0.0-alpha.1 in the [CHANGELOG](../CHANGELOG.md) say: a string at a reference path that isn't a reference of its relation is neither written nor synced as an id, a reference is synced only to the relation of its path, and a media reference resolves by its key before it is attached.
