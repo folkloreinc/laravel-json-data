@@ -20,6 +20,6 @@ The plan in [#56](https://github.com/folkloreinc/laravel-folklore/issues/56#issu
 
 ## Consequences
 
-- The medias module ships one handler for media ([0008](0008-media-references.md)); the sites' copies of `SyncsJsonDataRelations` go away.
+- The medias module ships one handler for media ([0008](https://github.com/folkloreinc/laravel-folklore/blob/v2.x/docs/decisions/0008-media-references.md)); the sites' copies of `SyncsJsonDataRelations` go away.
 - Tenancy checks live in `allows()`, in one place per key, instead of in each model.
-- Open, see [roadmap.md](../roadmap.md#open-questions): whether `prepare()` is deferred until the model's `saving` event, and whether the fallback of unmapped keys resolves through the owner's relation, as 1.x did.
+- Open, see [roadmap.md](https://github.com/folkloreinc/laravel-folklore/blob/v2.x/docs/roadmap.md#open-questions): whether `prepare()` is deferred until the model's `saving` event, and whether the fallback of unmapped keys resolves through the owner's relation, as 1.x did.

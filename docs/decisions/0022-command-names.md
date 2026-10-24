@@ -6,7 +6,7 @@
 
 ## Context
 
-The rewrite command came from `folklore/laravel-folklore` 2 with its name, `folklore:json-references:rewrite`. laravel-folklore's [decision 0021](https://github.com/folkloreinc/laravel-folklore/pull/107) kept that name when JSON data moved to this package, and its [0014](https://github.com/folkloreinc/laravel-folklore/blob/v2.x/docs/decisions/0014-names.md) lists it among its names.
+The rewrite command came from `folklore/laravel-folklore` 2 with its name, `folklore:json-references:rewrite`. laravel-folklore's [decision 0021](https://github.com/folkloreinc/laravel-folklore/blob/v2.x/docs/decisions/0021-json-data-package.md) kept that name when JSON data moved to this package, and its [0014](https://github.com/folkloreinc/laravel-folklore/blob/v2.x/docs/decisions/0014-names.md) lists it among its names.
 
 This package knows nothing of the other Folklore packages, and an application can use it without laravel-folklore. A `folklore:` command there reads as if it came from laravel-folklore, and would mix with laravel-folklore's own commands (`folklore:upgrade`) in `php artisan list`. The sync command to come ([#5](https://github.com/folkloreinc/laravel-json-data/issues/5)) would get the same kind of name.
 

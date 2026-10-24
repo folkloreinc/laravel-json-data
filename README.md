@@ -45,13 +45,14 @@ $game->data['prizes'][0]['prize']; // the Prize model, resolved in one query per
 
 ## Status
 
-In development, before 1.0. The code comes from [`folklore/laravel-folklore`](https://github.com/folkloreinc/laravel-folklore) 2, which requires this package. A model declares its JSON columns with `jsonDataSchema()`; laravel-folklore feeds its 1.x declarations through `JsonData::declareUsing()`. The schema's validation rules and JSON Schema export are its next slices. See the [roadmap](https://github.com/folkloreinc/laravel-json-data/issues/1).
+In development, before 1.0. The code comes from [`folklore/laravel-folklore`](https://github.com/folkloreinc/laravel-folklore) 2, which requires this package. A model declares its JSON columns with `jsonDataSchema()`; laravel-folklore feeds its 1.x declarations through `JsonData::declareUsing()`. Before 1.0: a command that syncs the relations of stored rows, then the schema's validation rules and its JSON Schema export. See the [roadmap](docs/roadmap.md), indexed in [#1](https://github.com/folkloreinc/laravel-json-data/issues/1).
 
 Requires PHP 8.3+ and Laravel 12 or 13.
 
 ## Documentation
 
 - [docs/json-data.md](docs/json-data.md): the specification
+- [docs/roadmap.md](docs/roadmap.md): the plan of 1.0
 - [docs/decisions/](docs/decisions/): the decisions about JSON data
 - [CHANGELOG.md](CHANGELOG.md)
 
