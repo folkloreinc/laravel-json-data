@@ -1,12 +1,12 @@
 # JSON data and references (`JsonDataCast`)
 
-Specification of `JsonDataCast` in 2.0. It ships in alpha 1 ([roadmap.md](roadmap.md)). It was designed in [#56](https://github.com/folkloreinc/laravel-folklore/issues/56#issuecomment-6344885526) and is recorded in [decisions 0005 to 0008](decisions/). The 1.x behaviour it starts from is described in [current-state.md](current-state.md#jsondatacast).
+Specification of `JsonDataCast`. It was built in `folklore/laravel-folklore` 2, designed in [folkloreinc/laravel-folklore#56](https://github.com/folkloreinc/laravel-folklore/issues/56#issuecomment-6344885526) and recorded in [decisions](decisions/) 0005 to 0007, 0013 and 0016, then moved to this package ([laravel-folklore's decision 0021](https://github.com/folkloreinc/laravel-folklore/pull/107)). The 1.x behaviour it starts from is described in laravel-folklore's [current-state.md](https://github.com/folkloreinc/laravel-folklore/blob/v2.x/docs/current-state.md#jsondatacast).
 
-Class and method names are settled in [decisions/0014](decisions/0014-names.md).
+A model declares its JSON columns with `jsonDataSchema()`, from alpha 2 ([laravel-folklore's decision 0020](https://github.com/folkloreinc/laravel-folklore/pull/106)). Until then, and for the models without a schema, the cast takes its declarations from a hook ([Hooks](#hooks)): laravel-folklore feeds its 1.x declarations through it. Numbers like #59 below are issues and pull requests of `folkloreinc/laravel-folklore`.
 
 ## Goals
 
-- Data stored by 1.x keeps working: `relation://id` references, `getJsonDataRelations()`, the column extraction, and entities that read resolved models in `data` (`to_entity(data_get($this->data, 'image.fr'))`).
+- Data stored by laravel-folklore 1.x keeps working: `relation://id` references, and, through laravel-folklore's adapter, `getJsonDataRelations()`, the column extraction, and entities that read resolved models in `data` (`to_entity(data_get($this->data, 'image.fr'))`).
 - A reference can be read without the model that holds it: by a recursive path, by the reference listing, by a JavaScript reader. Renaming a relation no longer breaks stored data.
 - The references of a whole collection of models resolve in one query per key, and a decoded value is not decoded and resolved again on every access.
 - What a reference points to decides how a value is prepared and resolved. The kind of Eloquent relation decides how it is synced.
@@ -37,8 +37,8 @@ The format is unchanged from 1.x, so JavaScript code that reads `relation://id` 
 A **global registry** maps each key to a model and its identifier column, like Eloquent's morph map. It is set once, in a service provider:
 
 ```php
-use Folklore\Eloquent\JsonData;
-use Folklore\Eloquent\JsonReference;
+use Folklore\JsonData\JsonData;
+use Folklore\JsonData\JsonReference;
 
 JsonData::map([
     'media' => JsonReference::to(Media::class)->by('uid')->using(MediaReferences::class),
@@ -58,31 +58,29 @@ The registry is read by the cast, the reference listing and the rewrite command.
 
 ## Declaring paths
 
-Models still declare their paths in `getJsonDataRelations($key, $value, $attributes)`, from `HasJsonDataRelations`, for each cast column. A path maps to a relation name, or to an array of options:
+Until the schema, the declarations hook gives, for each cast column of a model, its reference paths and the paths copied into columns. A path maps to a relation name, or to an array of options:
 
 ```php
-// A brand, with an `images` column cast with JsonDataCast
-public function getJsonDataRelations($key, $value, $attributes = []): array
-{
-    return match ($key) {
-        'images' => [
+JsonData::declareUsing(fn (Model $model, string $attribute, mixed $value, array $attributes) => match (true) {
+    $model instanceof Brand && $attribute === 'images' => [
+        'references' => [
             'logo' => 'medias',
             'favicon' => 'medias',
             'gallery.*' => 'medias',
         ],
-        default => [],
-    };
-}
-
-// A game of an upgraded site: only what changes from 1.x
-public function getJsonDataRelations($key, $value, $attributes = [])
-{
-    return [
-        'image.*' => 'medias',
-        'prizes.*.prize' => ['relation' => 'prizes', 'key' => 'prize'],
-    ];
-}
+    ],
+    $model instanceof Game => [
+        'references' => [
+            'image.*' => 'medias',
+            'prizes.*.prize' => ['relation' => 'prizes', 'key' => 'prize'],
+        ],
+        'columns' => ['title.fr' => 'title_fr'],
+    ],
+    default => null,
+});
 ```
+
+This is the shape of laravel-folklore's 1.x `getJsonDataRelations()` and `getJsonDataColumnExtract()`, which its adapter passes as they are.
 
 ### Paths
 
@@ -109,9 +107,10 @@ public function getJsonDataRelations($key, $value, $attributes = [])
 | `delete` | Kept | Delete the related rows that are no longer referenced, before syncing |
 | `skip` | Kept | A callable that skips a value, on read and on write |
 | `lazy` | Deprecated | 1.x: resolve only if the relation is loaded. Batch resolution makes it unneeded ([below](#batch-resolution)); kept with its 1.x meaning until 3.0 |
-| `get`, `set`, `before_set` | Deprecated | Per-path callables. Kept, run before the handler, until 3.0 |
+| `get`, `set`, `before_set` | Deprecated | Per-path callables. Kept, run before the handler, until 2.0 |
+| `callbacks` | **New** | A resolver of `get`, `set` and `before_set` for a path that doesn't give them: `fn (string $name, string $relationName, Model $model): ?callable` |
 
-The string-keyed static macros of 1.x (`JsonDataCast::macro('medias:get', …)`, `'App\Models\Game:medias:before_set'`) keep working through the registry, deprecated: a macro for a relation applies to the paths declared with that relation, before its handler.
+The string-keyed static macros of 1.x (`JsonDataCast::macro('medias:get', …)`, `'App\Models\Game:medias:before_set'`) are laravel-folklore's: its `Folklore\Eloquent\JsonDataCast` keeps them, and its adapter passes them through `callbacks`, so a macro for a relation applies to the paths declared with that relation, before its handler. This package's cast has no macros.
 
 ## Writing
 
@@ -146,8 +145,8 @@ A value that can't be prepared throws `InvalidJsonReference` under `enforceMap()
 
 `prepare()` can ingest a file, and the save can still fail after `saving`: the query, the sync of relations, or a later listener. The media would then exist without a usage.
 
-- Repositories run `saveData()` in a database transaction (in 1.x, only the `Pages` and `Blocks` repositories did). When it rolls back, the media row created by `Mediatheque::ingest()` rolls back with it, and the mediatheque doesn't run its pipeline, which it dispatches only after the commit. The stored file is left without a media; `mediatheque:prune` deletes orphan files ([laravel-mediatheque 2's roadmap](https://github.com/folkloreinc/laravel-mediatheque/blob/v2.x/docs/roadmap.md), alpha 2).
-- A model saved outside a transaction (`$model->save()` in application code) can leave a media without a usage, which nothing prunes ([decisions/0019](decisions/0019-media-of-failed-saves.md)). Save it in a transaction to avoid it:
+- laravel-folklore's repositories run `saveData()` in a database transaction (in 1.x, only the `Pages` and `Blocks` repositories did). When it rolls back, the media row created by `Mediatheque::ingest()` rolls back with it, and the mediatheque doesn't run its pipeline, which it dispatches only after the commit. The stored file is left without a media; `mediatheque:prune` deletes orphan files ([laravel-mediatheque 2's roadmap](https://github.com/folkloreinc/laravel-mediatheque/blob/v2.x/docs/roadmap.md), alpha 2).
+- A model saved outside a transaction (`$model->save()` in application code) can leave a media without a usage, which nothing prunes (laravel-folklore's [decision 0019](https://github.com/folkloreinc/laravel-folklore/blob/v2.x/docs/decisions/0019-media-of-failed-saves.md)). Save it in a transaction to avoid it:
 
   ```php
   DB::transaction(fn () => $model->save());
@@ -155,7 +154,7 @@ A value that can't be prepared throws `InvalidJsonReference` under `enforceMap()
 
 ### Partial updates
 
-A repository merges an update into the current value of the column. References that don't resolve (a lazy relation that isn't loaded, a related row that is gone, a reference the owner may no longer read) are put back before the merge, so that writing the value back doesn't replace them with `null`. This is the 1.1.8 behaviour ([#63](https://github.com/folkloreinc/laravel-folklore/pull/63)), kept.
+laravel-folklore's repositories merge an update into the current value of the column, from `JsonDataCast::getValueWithUnresolvedReferences($model, $attribute)`. References that don't resolve (a lazy relation that isn't loaded, a related row that is gone, a reference the owner may no longer read) are put back before the merge, so that writing the value back doesn't replace them with `null`. This is the 1.1.8 behaviour ([#63](https://github.com/folkloreinc/laravel-folklore/pull/63)), kept.
 
 ## Reading
 
@@ -244,7 +243,7 @@ The #56 design passed references to `resolveMany()`. It takes identifiers with t
 
 ### Default handler
 
-`Folklore\Eloquent\ModelReferences`.
+`Folklore\JsonData\ModelReferences`.
 
 Used by every key mapped without a handler, and by unmapped keys when a value is written.
 
@@ -262,11 +261,11 @@ Applications extend it rather than implement the contract from scratch.
 
 ## Syncing
 
-After the model is saved, the references at each relation's paths are synced to that relation, as in 1.x, by the kind of relation. The cast does it in a `saved` listener, registered with its `saving` one, so a model is synced however it is saved: `$model->save()`, `create()`, a factory, a seeder, an application repository, or the base repository ([#97](https://github.com/folkloreinc/laravel-folklore/issues/97)). 1.x only synced in the base repository.
+After the model is saved, the references at each relation's paths are synced to that relation, as in 1.x, by the kind of relation. The cast does it in a `saved` listener, registered with its `saving` one, so a model is synced however it is saved: `$model->save()`, `create()`, a factory, a seeder, an application repository, or laravel-folklore's base repository ([#97](https://github.com/folkloreinc/laravel-folklore/issues/97)). 1.x only synced in the base repository.
 
 - Only the relations declared in the JSON attributes that changed are synced. A relation gathers its references from every JSON attribute of the model.
 - A model saved without events (`saveQuietly()`, `withoutEvents()`) isn't synced, nor are rows written another way (raw SQL, imports). `JsonDataCast::syncRelations($model)` syncs them, and [#86](https://github.com/folkloreinc/laravel-folklore/issues/86) plans a command for stored rows.
-- The base repository doesn't sync a second time. Its `syncRelations($model, $data)` stays as a hook for a repository's own relations, after `saveData()`.
+- laravel-folklore's base repository doesn't sync a second time.
 
 
 | Relation | Sync |
@@ -279,7 +278,7 @@ After the model is saved, the references at each relation's paths are synced to 
 - `sync => false` and a `sync` callable behave as in 1.x.
 - Syncing doesn't call `refresh()` on the model anymore, nor does the base repository after it: it unsets the synced relations and the memoized values.
 
-Media references sync into `laravel-mediatheque` 2's `medias_pivot`, which is also its usage graph, with its `HasMedias::syncMedias()`, under the handle `json` (`JsonDataCast::MEDIAS_HANDLE`): the sync only replaces its own rows, so a media attached otherwise (`attachMedia($media, 'cover')`) stays ([laravel-mediatheque's decision 0020](https://github.com/folkloreinc/laravel-mediatheque/blob/v2.x/docs/decisions/0020-attachments-by-handle-and-usages.md)). One handle serves every JSON column of a model, since the cast gathers the references of a relation across its columns. A reference whose identifier is not a media key (a URL, a reference of another relation) is not synced; 1.x wrote it to the pivot. Rows that 1.x wrote for JSON references have no handle: an upgraded site removes them before the first sync ([upgrade.md](upgrade.md)).
+An application can sync a relation itself, instead of the sync by kind of relation, with `JsonData::syncUsing()` ([Hooks](#hooks)). laravel-folklore's medias module syncs the media into `laravel-mediatheque` 2's `medias_pivot`, which is also its usage graph, under the handle `json`, so that a media attached otherwise stays.
 
 ## Reference listing
 
@@ -292,7 +291,7 @@ JsonData::references($brand, ['images']);
 // Collection<int, JsonReferenceEntry>: key, identifier, target, attribute, path, relation
 ```
 
-It reads the stored value, not the resolved one, so it lists references that don't resolve too. `laravel-mediatheque` 2 uses it to keep its usage graph in sync, and `folklore:upgrade --check` to report keys that aren't mapped.
+It reads the stored value, not the resolved one, so it lists references that don't resolve too. `laravel-mediatheque` 2 uses it to keep its usage graph in sync, and laravel-folklore's `folklore:upgrade --check` to report keys that aren't mapped.
 
 `JsonData::parse('media://med_01J…')` returns a `JsonReferenceEntry` (key, identifier, and the key's target, or none for an unmapped key without `enforceMap()`) or `null`, and `JsonData::reference($model)` builds the reference of a model with its first key. `JsonData::keysFor($model)` and `keyFor($model)` list the keys mapped to a model or one it extends.
 
@@ -302,92 +301,48 @@ It reads the stored value, not the resolved one, so it lists references that don
 php artisan folklore:json-references:rewrite --from=medias --to=media --dry-run
 ```
 
-- Rewrites every reference with the key `--from` to the key `--to`, at the declared paths of every cast column of the models given by `--model` (repeatable), or of the models of `app/Models` and, with the pages module, of its `Page` and `Block`.
+- Rewrites every reference with the key `--from` to the key `--to`, at the declared paths of every cast column of the models given by `--model` (repeatable), or of the models of `app/Models` and those added with `JsonReferencesRewriteCommand::discoverUsing()` (laravel-folklore adds its pages and blocks).
 - Both keys must be mapped to the same model. Identifiers are converted in batches through the model (`medias://12` → `media://med_…` reads the `uid` of media 12).
 - References that don't resolve are left as they are and reported.
 - `--dry-run` reports what would change. The command works in chunks (`--chunk`, 500 rows), without model events or global scopes, and can be run again.
 
-`laravel-mediatheque` 2 planned a helper to rewrite JSON columns; this command is that helper, for `laravel-folklore` columns.
+`laravel-mediatheque` 2 planned a helper to rewrite JSON columns; this command is that helper.
 
-## Media references
+## Media references and repositories
 
-The medias module registers two keys, when `laravel-mediatheque` 2 is installed:
+Both are laravel-folklore's, on top of this package:
 
-| Key | Column | Form | Use |
-|---|---|---|---|
-| `media` | `uid` | `media://med_01J…` | 2.0 |
-| `medias` | `id` | `medias://12` | 1.x, kept for upgraded sites |
+- its medias module maps the `media` (`media://med_…`, by uid) and `medias` (`medias://12`, by id) keys to the mediatheque's media, with its `MediaReferences` handler, which ingests files and URLs and checks the forms it accepts ([laravel-folklore's json-data.md](https://github.com/folkloreinc/laravel-folklore/blob/v2.x/docs/json-data.md#media-references));
+- its repositories list their JSON columns (`$jsonAttributes`), merge updates into them, and load the references of their results with `JsonData::load()` (`withJsonReferences()`).
 
-Both use `Folklore\Eloquent\MediaReferences`, so either one resolves in a relation to media, attached or not ([decisions/0016](decisions/0016-scope-of-unmapped-keys.md)). The module maps first, and so writes by default, the key of `site.medias.reference_key`: `media` for new projects (the default), `medias` for upgraded sites (`folklore:upgrade` will set it), so that front ends that read `medias://` keep working until they move. A relation can still choose with `key`, and a reference of the other key is kept as it is until the rewrite command converts it. A project that only wants `media://` references sets `site.medias.references.other_key` to `false`: the module then maps only the key of `site.medias.reference_key`.
+## Hooks
 
-`MediaReferences`:
+What the package doesn't know, an application or a package sets once, in a service provider:
 
-- `prepare()` accepts a media model, a media entity, a reference of either key, a uid, a 1.x id, a Panneau 5 media value (`['id' => 'med_…']`), an uploaded file, a file or a URL, as far as `site.medias.references.accept` allows ([below](#accepted-forms)). Files are ingested with `Mediatheque::ingest()`, which replaces the `SyncsJsonDataRelations` traits several sites copied. A URL is downloaded with the medias repository's limits (`site.medias.download`), then ingested, until the mediatheque ingests URLs behind its SSRF guard. Files and URLs are ingested when the owner is saved ([decisions/0013](decisions/0013-defer-prepare-until-saving.md)).
-- `resolveMany()` runs one query on the key's column through the media model, with its files, as `Mediatheque::resolveMany()` does. It doesn't call the facade, so that references resolve under `Mediatheque::fake()` too ([below](#testing-with-the-mediatheques-fake)).
-- Applications plug their tenancy into it:
+| Hook | Given | laravel-folklore uses it for |
+|---|---|---|
+| `JsonData::declareUsing(fn (Model $model, string $attribute, mixed $value, array $attributes): ?array)` | The declarations of a column without a schema: `references` and `columns`, as [above](#declaring-paths). The first callback that returns an array wins | Its 1.x declarations and macros |
+| `JsonData::unwrapUsing(fn (object $value, ?JsonReference $target): mixed)` | A value that isn't a model, to turn into the model or the identifier it stands for. Returns the value unchanged when it doesn't know it | Its entities (`HasModel`, `ToEntity`, `Entity`) |
+| `JsonData::syncUsing(fn (Model $model, string $relationName, Relation $relation, array $ids): bool)` | The relation of a model and the keys of the referenced models. Returns true when it synced them, instead of the cast | The mediatheque's usage graph, under the `json` handle |
+| `JsonReferencesRewriteCommand::discoverUsing(fn (): iterable)` | Model classes that the rewrite command looks at by default | Its pages and blocks |
 
-```php
-MediaReferences::ingestUsing(fn (Model $owner) => ['workspace_id' => $owner->workspace_id]);
-MediaReferences::allowUsing(fn (Media $media, ?Model $owner) => $media->workspace_id === $owner?->workspace_id);
-```
-
-`ingestUsing()` gives the columns of the media ingested for an owner; `allowUsing()` is checked on write (a refusal throws `ReferenceNotAllowed`) and on read (a refused media reads as `null`).
-
-### Accepted forms
-
-A value that reaches a media path, from a form for example, is downloaded by the server if it is a URL, ingested if it is a file, and resolved by internal id if it is a number. `site.medias.references.accept` lists the forms `prepare()` takes ([#85](https://github.com/folkloreinc/laravel-folklore/issues/85)):
-
-| Form | Values |
-|---|---|
-| `model` | A media model or entity, or a Panneau 5 value whose `id` is a uid |
-| `reference` | A `media://med_…` reference |
-| `uid` | A uid (`med_…`) |
-| `legacy_id` | A 1.x id: `12`, `'12'`, `medias://12`, or a Panneau 5 value whose `id` is one |
-| `file` | An uploaded file or a file, ingested |
-| `url` | An http(s) URL, downloaded then ingested |
-
-```php
-// config/site.php
-'medias' => [
-    'reference_key' => 'media',
-    'references' => [
-        'accept' => MediaReferences::STRICT,  // ['model', 'reference', 'uid']
-        'other_key' => false,                  // don't map `medias://` (by internal id)
-    ],
-],
-```
-
-- By default (`null`), the forms are `MediaReferences::STRICT` under `JsonData::enforceMap()`, and every form (`MediaReferences::FORMS`) otherwise, as in 1.x, so upgraded sites keep their behaviour.
-- A value of a form that isn't accepted throws `InvalidJsonReference` under `enforceMap()`, and is written `null` otherwise, as any value the handler doesn't take. Nothing is downloaded nor ingested.
-- An unknown form throws an `InvalidArgumentException`.
-- A reference of a mapped key is kept as it is when it is written, without `prepare()` ([Writing](#when-a-value-is-assigned)). With both keys mapped, `medias://12` is still written under the strict forms: a project that refuses internal ids sets `other_key` to `false` too.
-- When URLs are accepted, set `site.medias.download.allowed_hosts`: it is `null` by default, which allows every host.
-
-### Testing with the mediatheque's fake
-
-`Mediatheque::fake()` replaces ingestion, probing and renditions, in memory. `MediaReferences` resolves references from the database, not through the facade, so a media created in the database (with a factory, for example) reads and writes as usual under the fake ([#98](https://github.com/folkloreinc/laravel-folklore/issues/98)). Its `resolve()` and `resolveMany()` know only the media it ingested itself.
-
-A file or a URL written to a media path is ingested by the fake, which returns a `FakeMedia`: it isn't a model, so the value is written `null`. A test that writes files to JSON data creates its media in the database first, or doesn't fake the mediatheque.
-
-## Repositories
-
-- A repository lists its JSON columns (`$jsonAttributes = ['data', 'images']`). The first one takes the data that isn't fillable, as `$jsonAttributeName` (`data`) does in 1.x, which keeps working, deprecated. Each of the others is given as a whole (`['images' => ['logo' => $media]]`) and merged into its stored value: the keys given replace theirs, the others stay, and the references that don't resolve are put back first. `null` clears it.
-- `withJsonReferences()` returns a copy of the repository that loads the references of each result with `JsonData::load()`, so `lazy` is no longer needed. The repository it is called on doesn't change.
+`JsonData::flush()` forgets the registry and the hooks, for tests.
 
 ## From 1.x
 
-| 1.x | 2.0 | Until 3.0 |
+| laravel-folklore 1.x | This package (laravel-folklore 2) | Until this package's 2.0 |
 |---|---|---|
 | Key = relation name | Key = registry entry; unmapped keys fall back to the relation of the same name | Fallback kept; off with `enforceMap()` |
 | `relation://id` resolved with `$model->{relation}->find($id)` | Mapped keys resolved in batches by their handler; unmapped keys through the relation, as in 1.x | — |
 | A string at a reference path that isn't a reference of the relation (a URL, `blocks://1` under a `medias` path) taken for an id: written `medias://https://…`, synced to the relation named in it | Not a reference: read as is; written `null` when the handler can't prepare it; not synced | — |
 | Values turned into references in `set()` | References kept in `set()`; other values prepared on `saving` | The deprecated callables still run in `set()` |
-| `JsonDataCast::macro('{relation}:get')`, `':set'`, `':before_set'`, per model or global | Handlers per key, `using` per path | Macros run, deprecated |
+| `JsonDataCast::macro('{relation}:get')`, `':set'`, `':before_set'`, per model or global | Handlers per key, `using` per path | Macros run in laravel-folklore, deprecated until its 3.0 |
 | `get`, `set`, `before_set` options | Handlers | Run, deprecated |
 | `lazy` | `JsonData::load()`, `withJsonReferences()` | Kept, deprecated |
 | `**` undocumented | `**` specified | — |
-| One JSON column per repository (`$jsonAttributeName`) | `$jsonAttributes` | Kept, deprecated |
+| `getJsonDataRelations()`, `getJsonDataColumnExtract()` | `jsonDataSchema()` (alpha 2) | Kept in laravel-folklore, through the declarations hook, until its 3.0 |
+| One JSON column per repository (`$jsonAttributeName`) | laravel-folklore's `$jsonAttributes` | Kept, deprecated |
 | Synced by the base repository, after `saveData()` | Synced by the cast after any save with events | — |
 | `syncRelations()` then `refresh()` | Relations and memoized values unset | — |
 
-Every 1.1 test of the cast passes on 2.0 without changes, except those that assert a deprecated behaviour's notice. The characterization tests added in 1.1.8 ([#60](https://github.com/folkloreinc/laravel-folklore/pull/60)) are the reference. Three of them change on purpose, as the breaking changes of 2.0.0-alpha.1 in the [CHANGELOG](../CHANGELOG.md) say: a string at a reference path that isn't a reference of its relation is neither written nor synced as an id, a reference is synced only to the relation of its path, and a media reference resolves by its key before it is attached.
+The characterization tests added in laravel-folklore 1.1.8 ([#60](https://github.com/folkloreinc/laravel-folklore/pull/60)) are the reference, and stay in laravel-folklore as the compatibility suite of its adapter. This package runs their cases on its own fixtures, through the declarations hook. Three of them change on purpose, as the breaking changes of laravel-folklore 2.0.0-alpha.1 say: a string at a reference path that isn't a reference of its relation is neither written nor synced as an id, a reference is synced only to the relation of its path, and a media reference resolves by its key before it is attached.
