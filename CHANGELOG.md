@@ -6,7 +6,11 @@ The package is released in pre-releases, tagged `v1.0.0-alpha.N`, then `beta.N` 
 
 ## [Unreleased]
 
-The schema of JSON columns, first slice ([laravel-folklore's decision 0020](https://github.com/folkloreinc/laravel-folklore/pull/106), [#7](https://github.com/folkloreinc/laravel-json-data/issues/7)).
+The schema of JSON columns, first slice ([laravel-folklore's decision 0020](https://github.com/folkloreinc/laravel-folklore/pull/106), [#7](https://github.com/folkloreinc/laravel-json-data/issues/7)), and the package's commands under `json-data:`.
+
+### Breaking changes
+
+- The rewrite command is `json-data:rewrite-references`, under the package's name, instead of `folklore:json-references:rewrite` ([#9](https://github.com/folkloreinc/laravel-json-data/issues/9), [decisions/0022](docs/decisions/0022-command-names.md)). The old name isn't kept as an alias: scripts, deploy steps and tests that call it move to the new one.
 
 ### Added
 
@@ -17,14 +21,6 @@ The schema of JSON columns, first slice ([laravel-folklore's decision 0020](http
 - `InvalidJsonData`: an input key that is neither fillable nor in a schema is refused when its object is `additional(false)`, which is the default under `JsonData::enforceMap()`. So is a locale that isn't configured.
 - A reference path with a key and no relation (`Json::reference()` without `relation()`, or `'key'` without `'relation'` in a declaration) is resolved, checked, loaded in batches, listed with a `null` relation and rewritten, but not synced ([#4](https://github.com/folkloreinc/laravel-json-data/issues/4)).
 - The locales of translatable nodes come from `LocaleResolver`, bound in the container to `ConfigLocaleResolver`, which reads the new `json-data.locales` and `json-data.default_locale` config, falling back to `app.locale`. The config is published with the `json-data-config` tag.
-
-### Changed
-
-- The rewrite command is `json-data:rewrite-references`, under the package's name instead of `folklore:` ([#9](https://github.com/folkloreinc/laravel-json-data/issues/9), [decisions/0022](docs/decisions/0022-command-names.md)).
-
-### Deprecated
-
-- `folklore:json-references:rewrite`, kept as an alias of `json-data:rewrite-references` that warns, for laravel-folklore 2 until it moves to the new name. Removed before 1.0.0.
 
 ## [1.0.0-alpha.1] - 2026-10-23
 

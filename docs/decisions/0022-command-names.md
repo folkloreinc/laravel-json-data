@@ -21,9 +21,9 @@ This package knows nothing of the other Folklore packages, and an application ca
 
 The class keeps its name, `JsonReferencesRewriteCommand`, with `discoverUsing()`.
 
-**`folklore:json-references:rewrite` stays as an alias that warns, until before 1.0.0.** laravel-folklore 2's tests, upgrade guide and docs call it. It moves to the new name in its next alpha, and the alias is then removed in an alpha of this package, listed under its breaking changes.
+**The old name is not kept as an alias.** The package is in alpha, where an alpha can break the previous one, and the command has been released only in `v1.0.0-alpha.1` and laravel-folklore's alphas. Keeping `folklore:` as an alias would keep the name this decision removes in `php artisan list`.
 
 ## Consequences
 
-- laravel-folklore 2 keeps working on `v1.0.0-alpha.2` without a change, with a deprecation warning when its sites call the old name. Its docs, tests and decision 0014 move to the new name in a pull request of their own.
+- A breaking change of `v1.0.0-alpha.2`. laravel-folklore 2's tests, upgrade guide, docs, roadmap and decision 0014 call the old name: they move to the new one when it requires alpha 2, in a pull request of their own.
 - The commands of this package are told apart from laravel-folklore's in `php artisan list`.

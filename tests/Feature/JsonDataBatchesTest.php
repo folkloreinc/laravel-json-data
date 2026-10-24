@@ -13,6 +13,7 @@ use Folklore\JsonData\Tests\Feature\Fixtures\Prize;
 use Folklore\JsonData\Tests\Feature\Fixtures\PrizesExceptSecret;
 use Folklore\JsonData\Tests\Feature\Fixtures\RegistryGame;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -220,27 +221,10 @@ class JsonDataBatchesTest extends JsonDataTestCase
         $this->assertSame('prize://first', $data['prizes'][0]['prize']);
     }
 
-    public function test_the_rewrite_command_keeps_its_laravel_folklore_name_as_a_deprecated_alias()
+    public function test_the_rewrite_command_no_longer_has_its_laravel_folklore_name()
     {
-        JsonData::map(['prize' => [Prize::class, 'handle'], 'prizeid' => Prize::class]);
-        $prize = $this->prize('first');
-        $game = $this->storedGame(['prizes' => [['prize' => 'prizeid://'.$prize->id]]]);
-
-        $this->artisan('folklore:json-references:rewrite', ['--from' => 'prizeid', '--to' => 'prize', '--model' => [BrandGame::class]])
-            ->expectsOutputToContain('folklore:json-references:rewrite is deprecated: use json-data:rewrite-references.')
-            ->assertSuccessful();
-
-        $data = json_decode((string) DB::table('games')->where('id', $game->id)->value('data'), true);
-        $this->assertSame('prize://first', $data['prizes'][0]['prize']);
-    }
-
-    public function test_the_rewrite_command_does_not_warn_under_its_name()
-    {
-        JsonData::map(['prize' => [Prize::class, 'handle'], 'prizeid' => Prize::class]);
-
-        $this->artisan('json-data:rewrite-references', ['--from' => 'prizeid', '--to' => 'prize', '--model' => [BrandGame::class]])
-            ->doesntExpectOutputToContain('deprecated')
-            ->assertSuccessful();
+        $this->assertArrayHasKey('json-data:rewrite-references', Artisan::all());
+        $this->assertArrayNotHasKey('folklore:json-references:rewrite', Artisan::all());
     }
 
     public function test_the_rewrite_command_needs_two_keys_of_the_same_model()

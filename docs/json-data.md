@@ -432,7 +432,7 @@ php artisan json-data:rewrite-references --from=medias --to=media --dry-run
 - Both keys must be mapped to the same model. Identifiers are converted in batches through the model (`medias://12` → `media://med_…` reads the `uid` of media 12).
 - References that don't resolve are left as they are and reported.
 - `--dry-run` reports what would change. The command works in chunks (`--chunk`, 500 rows), without model events or global scopes, and can be run again.
-- `folklore:json-references:rewrite`, its name in laravel-folklore, is a deprecated alias that warns, removed before 1.0.0 ([decisions/0022](decisions/0022-command-names.md)).
+- It was `folklore:json-references:rewrite` in laravel-folklore and in this package's alpha 1 ([decisions/0022](decisions/0022-command-names.md)).
 
 `laravel-mediatheque` 2 planned a helper to rewrite JSON columns; this command is that helper.
 
