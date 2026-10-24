@@ -6,11 +6,13 @@ The package is released in pre-releases, tagged `v1.0.0-alpha.N`, then `beta.N` 
 
 ## [Unreleased]
 
+## [1.0.0-alpha.2] - 2026-10-23
+
 The schema of JSON columns, first slice ([laravel-folklore's decision 0020](https://github.com/folkloreinc/laravel-folklore/pull/106), [#7](https://github.com/folkloreinc/laravel-json-data/issues/7)), and the package's commands under `json-data:`.
 
 ### Breaking changes
 
-- The rewrite command is `json-data:rewrite-references`, under the package's name, instead of `folklore:json-references:rewrite` ([#9](https://github.com/folkloreinc/laravel-json-data/issues/9), [decisions/0022](docs/decisions/0022-command-names.md)). The old name isn't kept as an alias: scripts, deploy steps and tests that call it move to the new one.
+- The rewrite command is `json-data:rewrite-references`, under the package's name, instead of `folklore:json-references:rewrite` ([#9](https://github.com/folkloreinc/laravel-json-data/issues/9), [decisions/0022](https://github.com/folkloreinc/laravel-json-data/blob/v1.x/docs/decisions/0022-command-names.md)). The old name isn't kept as an alias: scripts, deploy steps and tests that call it move to the new one.
 
 ### Added
 
@@ -50,5 +52,6 @@ The JSON data of `folklore/laravel-folklore` 2.0.0-alpha.3, in its own package (
 
 - `JsonDataCast::MEDIAS_HANDLE`, kept for the code that read it in laravel-folklore. Removed in 2.0.
 
-[Unreleased]: https://github.com/folkloreinc/laravel-json-data/compare/v1.0.0-alpha.1...v1.x
+[Unreleased]: https://github.com/folkloreinc/laravel-json-data/compare/v1.0.0-alpha.2...v1.x
+[1.0.0-alpha.2]: https://github.com/folkloreinc/laravel-json-data/compare/v1.0.0-alpha.1...v1.0.0-alpha.2
 [1.0.0-alpha.1]: https://github.com/folkloreinc/laravel-json-data/releases/tag/v1.0.0-alpha.1
