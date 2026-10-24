@@ -115,7 +115,7 @@ class JsonDataCast implements CastsAttributes
                         }
 
                         if ($entry->isMapped()) {
-                            $related = self::relatedClass($model, $relationName);
+                            $related = self::acceptedClass($model, $relation, $relationName);
                             if (is_null($related) || ! $entry->target?->accepts($related)) {
                                 if (self::isRecursive($pattern)) {
                                     return $newValue;
@@ -183,7 +183,7 @@ class JsonDataCast implements CastsAttributes
                         }
                         $relationName = self::relationName($model, $relation, $item, $path);
                         // Already serialized, for instance data read raw and written back
-                        if (self::isAcceptedReference($model, $item, $relationName)) {
+                        if (self::isAcceptedReference($model, $item, $relation, $relationName)) {
                             return $newValue;
                         }
                         if ($recursive && ! self::isModelOrUnwrappable($item)) {
@@ -200,7 +200,7 @@ class JsonDataCast implements CastsAttributes
 
                             return $newValue;
                         }
-                        if (is_null($item) || self::isAcceptedReference($model, $item, $relationName)) {
+                        if (is_null($item) || self::isAcceptedReference($model, $item, $relation, $relationName)) {
                             data_set($newValue, $path, $item);
 
                             return $newValue;
@@ -209,7 +209,7 @@ class JsonDataCast implements CastsAttributes
                         if (self::defersPreparing($model)) {
                             self::addPending($model, $key, $path, $item, $relation, $relationName);
                             $previous = data_get($stored, $path);
-                            data_set($newValue, $path, self::isAcceptedReference($model, $previous, $relationName) ? $previous : null);
+                            data_set($newValue, $path, self::isAcceptedReference($model, $previous, $relation, $relationName) ? $previous : null);
 
                             return $newValue;
                         }
@@ -325,7 +325,7 @@ class JsonDataCast implements CastsAttributes
      */
     public static function load(iterable $models, ?array $attributes = null): void
     {
-        /** @var array<string, array{entry: JsonReferenceEntry, relation: array<string, mixed>, relationName: string, ownerClass: class-string<Model>, attribute: string, identifiers: list<string>, owners: list<array{Model, mixed, string}>}> $groups */
+        /** @var array<string, array{entry: JsonReferenceEntry, relation: array<string, mixed>, relationName: string|null, ownerClass: class-string<Model>, attribute: string, identifiers: list<string>, owners: list<array{Model, mixed, string}>}> $groups */
         $groups = [];
         /** @var array<class-string<Model>, array{models: array<int, Model>, relations: array<string, true>}> $eager */
         $eager = [];
@@ -342,7 +342,7 @@ class JsonDataCast implements CastsAttributes
                         $groups[$group] ??= [
                             'entry' => $entry,
                             'relation' => $relation,
-                            'relationName' => (string) $entry->relation,
+                            'relationName' => $entry->relation,
                             'ownerClass' => $model::class,
                             'attribute' => $attribute,
                             'identifiers' => [],
@@ -431,9 +431,38 @@ class JsonDataCast implements CastsAttributes
     }
 
     /**
+     * The attributes of a model cast with this cast, or a subclass of it.
+     *
+     * @return list<string>
+     *
+     * @internal
+     */
+    public static function castAttributesOf(Model $model): array
+    {
+        return self::castAttributes($model);
+    }
+
+    /**
+     * The decoded raw value of a JSON attribute, with the values assigned since it was
+     * saved and not prepared yet put back at their paths: what `JsonData::fill()` merges
+     * its input into. References stay strings, whether they resolve or not.
+     *
+     * @return array<array-key, mixed>|null
+     *
+     * @internal
+     */
+    public static function storedWithPending(Model $model, string $attribute): ?array
+    {
+        $value = self::withPendingValues($model, $attribute, self::stored($model, $attribute));
+
+        return is_array($value) ? $value : null;
+    }
+
+    /**
      * The references that a relation accepts at its declared paths, in a model's stored
-     * JSON attribute: mapped keys of the related model, and, outside recursive paths, the
-     * key named after the relation when it isn't mapped.
+     * JSON attribute: mapped keys of the related model (or, for a path declared with a key
+     * and no relation, of the key's model), and, outside recursive paths, the key named
+     * after the relation when it isn't mapped.
      *
      * @return list<array{JsonReferenceEntry, array<string, mixed>}>
      */
@@ -448,7 +477,7 @@ class JsonDataCast implements CastsAttributes
         $references = [];
         foreach (self::relations($model, $attribute, $value, $model->getAttributes()) as $relation) {
             $relationName = self::relationName($model, $relation, null, null);
-            $related = self::relatedClass($model, $relationName);
+            $related = self::acceptedClass($model, $relation, $relationName);
             foreach (self::paths($relation) as $pattern) {
                 foreach (Paths::matching([$pattern], $value) as $path) {
                     $item = data_get($value, $path);
@@ -461,7 +490,7 @@ class JsonDataCast implements CastsAttributes
                         : ! self::isRecursive($pattern) && $entry->key === $relationName && ! is_null($related);
                     if ($accepted) {
                         $references[] = [
-                            new JsonReferenceEntry($entry->key, $entry->identifier, $entry->target, $attribute, (string) $path, $relationName),
+                            new JsonReferenceEntry($entry->key, $entry->identifier, $entry->target, $attribute, (string) $path, $relationName !== '' ? $relationName : null),
                             $relation,
                         ];
                     }
@@ -515,6 +544,10 @@ class JsonDataCast implements CastsAttributes
                     continue;
                 }
                 $relationName = self::relationName($model, $relation, null, null);
+                // A path declared with a key and no relation is not synced
+                if ($relationName === '') {
+                    continue;
+                }
                 $declaredIn[$relationName][] = (string) $key;
                 $relationsMap[$relationName] = [
                     'relation' => $relation,
@@ -711,7 +744,7 @@ class JsonDataCast implements CastsAttributes
             ->values()
             ->reduce(function ($relations, $relation) {
                 $foundKey = $relations->search(function ($existing) use ($relation) {
-                    return $existing['relation'] === $relation['relation'] &&
+                    return ($existing['relation'] ?? null) === ($relation['relation'] ?? null) &&
                         Arr::except($existing, ['path', 'relation']) ==
                             Arr::except($relation, ['path', 'relation']);
                 });
@@ -880,7 +913,7 @@ class JsonDataCast implements CastsAttributes
                 ownerClass: $model::class,
                 owner: $model,
                 attribute: $key,
-                relation: $group['relationName'],
+                relation: $group['relationName'] !== '' ? $group['relationName'] : null,
             );
             $handler = self::handler($target, $group['relation']);
             $models = $handler->resolveMany(array_values(array_unique($group['identifiers'])), $context);
@@ -930,7 +963,7 @@ class JsonDataCast implements CastsAttributes
     {
         [$writeKey, $target] = self::writeTarget($model, $relation, $relationName);
         if (is_null($target)) {
-            return self::unpreparable($model, $relationName);
+            return self::unpreparable($model, $relationName !== '' ? $relationName : $writeKey);
         }
 
         $context = new ReferenceContext(
@@ -941,19 +974,19 @@ class JsonDataCast implements CastsAttributes
             owner: $model,
             attribute: $key,
             path: $path,
-            relation: $relationName,
+            relation: $relationName !== '' ? $relationName : null,
         );
         $handler = self::handler($target, $relation);
         $prepared = $handler->prepare($value, $context);
         if (is_null($prepared)) {
-            return self::unpreparable($model, $relationName);
+            return self::unpreparable($model, $relationName !== '' ? $relationName : $writeKey);
         }
         if (! $handler->allows($prepared, $context)) {
             throw ReferenceNotAllowed::for($prepared, $context);
         }
         $identifier = $target->identifierOf($prepared);
 
-        return is_null($identifier) ? self::unpreparable($model, $relationName) : $writeKey.'://'.$identifier;
+        return is_null($identifier) ? self::unpreparable($model, $relationName !== '' ? $relationName : $writeKey) : $writeKey.'://'.$identifier;
     }
 
     /**
@@ -987,10 +1020,13 @@ class JsonDataCast implements CastsAttributes
         return [$relationName, is_null($related) ? null : JsonReference::to($related)];
     }
 
-    protected static function unpreparable(Model $model, string $relationName): ?string
+    /**
+     * @param  string  $declared  The relation of the path, or its key when it has no relation.
+     */
+    protected static function unpreparable(Model $model, string $declared): ?string
     {
         if (JsonData::enforcesMap()) {
-            throw new InvalidJsonReference("A value at a path of [{$relationName}] on [".$model::class.'] is not something its reference handler takes.');
+            throw new InvalidJsonReference("A value at a path of [{$declared}] on [".$model::class.'] is not something its reference handler takes.');
         }
 
         return null;
@@ -1015,9 +1051,12 @@ class JsonDataCast implements CastsAttributes
 
     /**
      * Whether a value is a stored reference that the relation accepts: a mapped key whose
-     * model is the related model, or, without a map, the relation's own name.
+     * model is the related model (or the model of the path's key, without a relation), or,
+     * without a map, the relation's own name.
+     *
+     * @param  array<string, mixed>  $relation
      */
-    protected static function isAcceptedReference(Model $model, mixed $item, mixed $relationName): bool
+    protected static function isAcceptedReference(Model $model, mixed $item, array $relation, mixed $relationName): bool
     {
         if (! is_string($item) || ! is_string($relationName)) {
             return false;
@@ -1027,9 +1066,9 @@ class JsonDataCast implements CastsAttributes
             return false;
         }
         if (! $entry->isMapped()) {
-            return $entry->key === $relationName;
+            return $relationName !== '' && $entry->key === $relationName;
         }
-        $related = self::relatedClass($model, $relationName);
+        $related = self::acceptedClass($model, $relation, $relationName);
 
         return ! is_null($related) && (bool) $entry->target?->accepts($related);
     }
@@ -1094,6 +1133,24 @@ class JsonDataCast implements CastsAttributes
         $relation = $model->{$relationName}();
 
         return $relation instanceof Relation ? $relation->getRelated()::class : null;
+    }
+
+    /**
+     * The class of the models that a declared path refers to: its relation's related
+     * model, or, for a path declared with a key and no relation (`Json::reference()`
+     * without `relation()`), the model the key is mapped to.
+     *
+     * @param  array<string, mixed>  $relation
+     * @return class-string<Model>|null
+     */
+    protected static function acceptedClass(Model $model, array $relation, string $relationName): ?string
+    {
+        if ($relationName !== '') {
+            return self::relatedClass($model, $relationName);
+        }
+        $key = $relation['key'] ?? null;
+
+        return is_string($key) ? JsonData::target($key)?->model : null;
     }
 
     /**
