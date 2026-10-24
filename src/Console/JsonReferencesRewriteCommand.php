@@ -25,7 +25,7 @@ class JsonReferencesRewriteCommand extends Command
      *
      * @var string
      */
-    protected $signature = 'folklore:json-references:rewrite
+    protected $signature = 'json-data:rewrite-references
         {--from= : The key of the references to rewrite}
         {--to= : The key to write instead, mapped to the same model}
         {--model=* : A model to rewrite; by default, the models of app/Models, and those added with discoverUsing(), that cast a JSON attribute with JsonDataCast}
@@ -38,6 +38,18 @@ class JsonReferencesRewriteCommand extends Command
      * @var string
      */
     protected $description = 'Rewrite the JSON references of one key to another';
+
+    /**
+     * The name the command had in laravel-folklore, kept as an alias.
+     *
+     * @deprecated Use `json-data:rewrite-references`. Removed before 1.0.0.
+     */
+    public const string DEPRECATED_NAME = 'folklore:json-references:rewrite';
+
+    /**
+     * @var list<string>
+     */
+    protected $aliases = [self::DEPRECATED_NAME];
 
     /**
      * @var list<Closure(): iterable<class-string>>
@@ -67,6 +79,10 @@ class JsonReferencesRewriteCommand extends Command
 
     public function handle(): int
     {
+        if ($this->input->getFirstArgument() === self::DEPRECATED_NAME) {
+            $this->warn(self::DEPRECATED_NAME.' is deprecated: use json-data:rewrite-references.');
+        }
+
         $from = $this->option('from');
         $to = $this->option('to');
         if (! is_string($from) || ! is_string($to) || $from === '' || $to === '' || $from === $to) {

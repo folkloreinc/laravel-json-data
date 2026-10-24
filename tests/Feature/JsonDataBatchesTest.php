@@ -190,12 +190,12 @@ class JsonDataBatchesTest extends JsonDataTestCase
             ['logo' => 'prizeid://'.$second->id],
         );
 
-        $this->artisan('folklore:json-references:rewrite', ['--from' => 'prizeid', '--to' => 'prize', '--model' => [BrandGame::class], '--dry-run' => true])
+        $this->artisan('json-data:rewrite-references', ['--from' => 'prizeid', '--to' => 'prize', '--model' => [BrandGame::class], '--dry-run' => true])
             ->expectsOutputToContain('Dry run')
             ->assertSuccessful();
         $this->assertSame('prizeid://'.$first->id, json_decode((string) DB::table('games')->where('id', $game->id)->value('data'), true)['prizes'][0]['prize']);
 
-        $this->artisan('folklore:json-references:rewrite', ['--from' => 'prizeid', '--to' => 'prize', '--model' => [BrandGame::class]])
+        $this->artisan('json-data:rewrite-references', ['--from' => 'prizeid', '--to' => 'prize', '--model' => [BrandGame::class]])
             ->assertSuccessful();
 
         $data = json_decode((string) DB::table('games')->where('id', $game->id)->value('data'), true);
@@ -213,24 +213,47 @@ class JsonDataBatchesTest extends JsonDataTestCase
         $game = $this->storedGame(['prizes' => [['prize' => 'prizeid://'.$prize->id]]]);
         JsonReferencesRewriteCommand::discoverUsing(fn () => [BrandGame::class]);
 
-        $this->artisan('folklore:json-references:rewrite', ['--from' => 'prizeid', '--to' => 'prize'])
+        $this->artisan('json-data:rewrite-references', ['--from' => 'prizeid', '--to' => 'prize'])
             ->assertSuccessful();
 
         $data = json_decode((string) DB::table('games')->where('id', $game->id)->value('data'), true);
         $this->assertSame('prize://first', $data['prizes'][0]['prize']);
     }
 
+    public function test_the_rewrite_command_keeps_its_laravel_folklore_name_as_a_deprecated_alias()
+    {
+        JsonData::map(['prize' => [Prize::class, 'handle'], 'prizeid' => Prize::class]);
+        $prize = $this->prize('first');
+        $game = $this->storedGame(['prizes' => [['prize' => 'prizeid://'.$prize->id]]]);
+
+        $this->artisan('folklore:json-references:rewrite', ['--from' => 'prizeid', '--to' => 'prize', '--model' => [BrandGame::class]])
+            ->expectsOutputToContain('folklore:json-references:rewrite is deprecated: use json-data:rewrite-references.')
+            ->assertSuccessful();
+
+        $data = json_decode((string) DB::table('games')->where('id', $game->id)->value('data'), true);
+        $this->assertSame('prize://first', $data['prizes'][0]['prize']);
+    }
+
+    public function test_the_rewrite_command_does_not_warn_under_its_name()
+    {
+        JsonData::map(['prize' => [Prize::class, 'handle'], 'prizeid' => Prize::class]);
+
+        $this->artisan('json-data:rewrite-references', ['--from' => 'prizeid', '--to' => 'prize', '--model' => [BrandGame::class]])
+            ->doesntExpectOutputToContain('deprecated')
+            ->assertSuccessful();
+    }
+
     public function test_the_rewrite_command_needs_two_keys_of_the_same_model()
     {
         JsonData::map(['prize' => [Prize::class, 'handle'], 'game' => Game::class]);
 
-        $this->artisan('folklore:json-references:rewrite', ['--from' => 'prize', '--to' => 'game'])
+        $this->artisan('json-data:rewrite-references', ['--from' => 'prize', '--to' => 'game'])
             ->expectsOutputToContain('not mapped to the same model')
             ->assertFailed();
-        $this->artisan('folklore:json-references:rewrite', ['--from' => 'prize', '--to' => 'missing'])
+        $this->artisan('json-data:rewrite-references', ['--from' => 'prize', '--to' => 'missing'])
             ->expectsOutputToContain('must be mapped')
             ->assertFailed();
-        $this->artisan('folklore:json-references:rewrite', ['--from' => 'prize'])
+        $this->artisan('json-data:rewrite-references', ['--from' => 'prize'])
             ->assertFailed();
     }
 }

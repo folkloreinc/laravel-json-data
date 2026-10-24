@@ -11,3 +11,4 @@ Decisions 0005 to 0007, 0013 and 0016 were taken in `folklore/laravel-folklore` 
 | [0007](0007-batch-resolution-and-listing.md) | Batch resolution, memoization and reference listing | Accepted |
 | [0013](0013-defer-prepare-until-saving.md) | Prepare JSON references when the model is saved | Accepted |
 | [0016](0016-scope-of-unmapped-keys.md) | Unmapped keys keep the scope of 1.x; mapped keys resolve by their column | Accepted |
+| [0022](0022-command-names.md) | Console commands are named under `json-data:` | Accepted |

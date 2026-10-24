@@ -18,6 +18,14 @@ The schema of JSON columns, first slice ([laravel-folklore's decision 0020](http
 - A reference path with a key and no relation (`Json::reference()` without `relation()`, or `'key'` without `'relation'` in a declaration) is resolved, checked, loaded in batches, listed with a `null` relation and rewritten, but not synced ([#4](https://github.com/folkloreinc/laravel-json-data/issues/4)).
 - The locales of translatable nodes come from `LocaleResolver`, bound in the container to `ConfigLocaleResolver`, which reads the new `json-data.locales` and `json-data.default_locale` config, falling back to `app.locale`. The config is published with the `json-data-config` tag.
 
+### Changed
+
+- The rewrite command is `json-data:rewrite-references`, under the package's name instead of `folklore:` ([#9](https://github.com/folkloreinc/laravel-json-data/issues/9), [decisions/0022](docs/decisions/0022-command-names.md)).
+
+### Deprecated
+
+- `folklore:json-references:rewrite`, kept as an alias of `json-data:rewrite-references` that warns, for laravel-folklore 2 until it moves to the new name. Removed before 1.0.0.
+
 ## [1.0.0-alpha.1] - 2026-10-23
 
 The JSON data of `folklore/laravel-folklore` 2.0.0-alpha.3, in its own package ([laravel-folklore's decision 0021](https://github.com/folkloreinc/laravel-folklore/pull/107), [#1](https://github.com/folkloreinc/laravel-json-data/issues/1)). The changes below are those from laravel-folklore 2.0.0-alpha.3, whose 1.x names stay there.

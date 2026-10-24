@@ -41,7 +41,7 @@ $game->data['prizes'][0]['prize']; // the Prize model, resolved in one query per
 - Values are turned into references when the model is saved, by a handler per key, which can check that the owner may refer to them.
 - The references of a collection resolve together (`JsonData::load()`), and are listed without resolving them (`JsonData::references()`).
 - The relations of the references are synced when the model is saved.
-- `php artisan folklore:json-references:rewrite` rewrites the references of one key to another.
+- `php artisan json-data:rewrite-references` rewrites the references of one key to another.
 
 ## Status
 

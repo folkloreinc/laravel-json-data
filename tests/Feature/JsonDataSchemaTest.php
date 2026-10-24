@@ -228,7 +228,7 @@ class JsonDataSchemaTest extends JsonDataTestCase
         $prize = $this->prize('grand-prize');
         $offer = $this->storedOffer(['source' => 'prizeid://'.$prize->id]);
 
-        $this->artisan('folklore:json-references:rewrite', ['--from' => 'prizeid', '--to' => 'prize', '--model' => [Offer::class]])
+        $this->artisan('json-data:rewrite-references', ['--from' => 'prizeid', '--to' => 'prize', '--model' => [Offer::class]])
             ->assertSuccessful();
 
         $this->assertSame('prize://grand-prize', $this->rawData($offer)['source']);
