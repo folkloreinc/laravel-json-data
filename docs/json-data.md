@@ -1,8 +1,8 @@
 # JSON data and references (`JsonDataCast`)
 
-Specification of `JsonDataCast`. It was built in `folklore/laravel-folklore` 2, designed in [folkloreinc/laravel-folklore#56](https://github.com/folkloreinc/laravel-folklore/issues/56#issuecomment-6344885526) and recorded in [decisions](decisions/) 0005 to 0007, 0013 and 0016, then moved to this package ([laravel-folklore's decision 0021](https://github.com/folkloreinc/laravel-folklore/pull/107)). The 1.x behaviour it starts from is described in laravel-folklore's [current-state.md](https://github.com/folkloreinc/laravel-folklore/blob/v2.x/docs/current-state.md#jsondatacast).
+Specification of `JsonDataCast`. It was built in `folklore/laravel-folklore` 2, designed in [folkloreinc/laravel-folklore#56](https://github.com/folkloreinc/laravel-folklore/issues/56#issuecomment-6344885526) and recorded in [decisions](decisions/) 0005 to 0007, 0013 and 0016, then moved to this package ([laravel-folklore's decision 0021](https://github.com/folkloreinc/laravel-folklore/blob/v2.x/docs/decisions/0021-json-data-package.md)). The 1.x behaviour it starts from is described in laravel-folklore's [current-state.md](https://github.com/folkloreinc/laravel-folklore/blob/v2.x/docs/current-state.md#jsondatacast).
 
-A model declares its JSON columns with `jsonDataSchema()` ([Schema](#schema), [laravel-folklore's decision 0020](https://github.com/folkloreinc/laravel-folklore/pull/106)). For the models without a schema, the cast takes its declarations from a hook ([Hooks](#hooks)): laravel-folklore feeds its 1.x declarations through it. Numbers like #59 below are issues and pull requests of `folkloreinc/laravel-folklore`.
+A model declares its JSON columns with `jsonDataSchema()` ([Schema](#schema), [laravel-folklore's decision 0020](https://github.com/folkloreinc/laravel-folklore/blob/v2.x/docs/decisions/0020-json-schema.md)). For the models without a schema, the cast takes its declarations from a hook ([Hooks](#hooks)): laravel-folklore feeds its 1.x declarations through it. Numbers like #59 below are issues and pull requests of `folkloreinc/laravel-folklore`.
 
 ## Goals
 
@@ -58,7 +58,7 @@ The registry is read by the cast, the reference listing and the rewrite command.
 
 ## Schema
 
-A model declares its JSON columns with a schema per attribute (`HasJsonDataSchema`), built with the fluent factory `Json` ([laravel-folklore's decision 0020](https://github.com/folkloreinc/laravel-folklore/pull/106), [#6](https://github.com/folkloreinc/laravel-json-data/issues/6)). This is the package's only way to declare a column; the declarations hook is there for laravel-folklore's 1.x declarations.
+A model declares its JSON columns with a schema per attribute (`HasJsonDataSchema`), built with the fluent factory `Json` ([laravel-folklore's decision 0020](https://github.com/folkloreinc/laravel-folklore/blob/v2.x/docs/decisions/0020-json-schema.md), [#6](https://github.com/folkloreinc/laravel-json-data/issues/6)). This is the package's only way to declare a column; the declarations hook is there for laravel-folklore's 1.x declarations.
 
 ```php
 use Folklore\JsonData\Contracts\HasJsonDataSchema;
@@ -179,9 +179,12 @@ $this->app->bind(LocaleResolver::class, SiteLocaleResolver::class);
 
 The locales are read when a translatable value is filled, and when a schema with a translatable `extract()` is compiled, once per schema.
 
-### Not in this slice
+### Not built yet
 
-The validation rules (`Json::rules()`, `validatesOnSave()`) and the JSON Schema export (`toJsonSchema()`) are the next slices ([#6](https://github.com/folkloreinc/laravel-json-data/issues/6)).
+Two slices of the schema come before 1.0 ([#6](https://github.com/folkloreinc/laravel-json-data/issues/6), [roadmap](roadmap.md)):
+
+- **Validation rules:** `Json::rules($model, $attribute)` compiles the schema into Laravel validation rules on the flat input keys, for form requests, with no dependency; validating on save (`validatesOnSave()`) is optional.
+- **JSON Schema export:** `toJsonSchema()` gives a standard JSON Schema (draft 2020-12), with `x-reference` and `x-translatable` extensions, for API specs and front-end types.
 
 ## Declaring paths
 
@@ -272,7 +275,7 @@ A value that can't be prepared throws `InvalidJsonReference` under `enforceMap()
 
 `prepare()` can ingest a file, and the save can still fail after `saving`: the query, the sync of relations, or a later listener. The media would then exist without a usage.
 
-- laravel-folklore's repositories run `saveData()` in a database transaction (in 1.x, only the `Pages` and `Blocks` repositories did). When it rolls back, the media row created by `Mediatheque::ingest()` rolls back with it, and the mediatheque doesn't run its pipeline, which it dispatches only after the commit. The stored file is left without a media; `mediatheque:prune` deletes orphan files ([laravel-mediatheque 2's roadmap](https://github.com/folkloreinc/laravel-mediatheque/blob/v2.x/docs/roadmap.md), alpha 2).
+- laravel-folklore's repositories run `saveData()` in a database transaction (in 1.x, only the `Pages` and `Blocks` repositories did). When it rolls back, the media row created by `Mediatheque::ingest()` rolls back with it, and the mediatheque doesn't run its pipeline, which it dispatches only after the commit. The stored file is left without a media; the mediatheque's deferred file cleanup is to delete it ([laravel-mediatheque 2's roadmap](https://github.com/folkloreinc/laravel-mediatheque/blob/v2.x/docs/roadmap.md), "Protected playback").
 - A model saved outside a transaction (`$model->save()` in application code) can leave a media without a usage, which nothing prunes (laravel-folklore's [decision 0019](https://github.com/folkloreinc/laravel-folklore/blob/v2.x/docs/decisions/0019-media-of-failed-saves.md)). Save it in a transaction to avoid it:
 
   ```php
@@ -366,7 +369,7 @@ interface ReferenceHandler
 
 `ReferenceContext` is a readonly object with the operation (`ReferenceOperation::Read` or `Write`), the key and its target (`JsonReference`: model, column, handler), the owners' class, the owner model (null in a batch of several owners), the JSON attribute, the declared path (null in a batch of several paths) and the relation name.
 
-The #56 design passed references to `resolveMany()`. It takes identifiers with the context, so that a handler doesn't parse what the cast has already parsed, and so that `MediaReferences` can serve two keys with different columns. Settled in alpha 1.
+The #56 design passed references to `resolveMany()`. It takes identifiers with the context, so that a handler doesn't parse what the cast has already parsed, and so that `MediaReferences` can serve two keys with different columns. Settled in laravel-folklore 2.0.0-alpha.1.
 
 ### Default handler
 
@@ -391,7 +394,7 @@ Applications extend it rather than implement the contract from scratch.
 After the model is saved, the references at each relation's paths are synced to that relation, as in 1.x, by the kind of relation. The cast does it in a `saved` listener, registered with its `saving` one, so a model is synced however it is saved: `$model->save()`, `create()`, a factory, a seeder, an application repository, or laravel-folklore's base repository ([#97](https://github.com/folkloreinc/laravel-folklore/issues/97)). 1.x only synced in the base repository.
 
 - Only the relations declared in the JSON attributes that changed are synced. A relation gathers its references from every JSON attribute of the model.
-- A model saved without events (`saveQuietly()`, `withoutEvents()`) isn't synced, nor are rows written another way (raw SQL, imports). `JsonDataCast::syncRelations($model)` syncs them, and [#86](https://github.com/folkloreinc/laravel-folklore/issues/86) plans a command for stored rows.
+- A model saved without events (`saveQuietly()`, `withoutEvents()`) isn't synced, nor are rows written another way (raw SQL, imports). `JsonDataCast::syncRelations($model)` syncs them, and `json-data:sync-references` will sync stored rows ([#5](https://github.com/folkloreinc/laravel-json-data/issues/5), before 1.0).
 - laravel-folklore's base repository doesn't sync a second time.
 
 

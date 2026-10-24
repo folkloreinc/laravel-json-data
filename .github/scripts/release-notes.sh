@@ -25,6 +25,11 @@ notes="$(awk -v heading="## [${version}] - " '
 # Trim the blank lines around the section.
 notes="$(printf '%s\n' "$notes" | sed -e '/./,$!d' | sed -e ':a' -e '/^\n*$/{$d;N;ba' -e '}')"
 
+# Relative links point to files of the repository, which a release page doesn't serve:
+# make them absolute, at the tag.
+repository="${GITHUB_REPOSITORY:-folkloreinc/laravel-json-data}"
+notes="$(printf '%s\n' "$notes" | sed -E "s#\]\((\./)?([^):#][^):]*)\)#](https://github.com/${repository}/blob/v${version}/\2)#g")"
+
 if [ -z "$notes" ]; then
     echo "The section of ${version} in CHANGELOG.md is empty." >&2
     exit 1

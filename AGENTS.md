@@ -10,9 +10,9 @@ Guidance for AI coding agents and human contributors working on this repository.
 
 References to models in the JSON columns of Eloquent models (`JsonDataCast`, the `JsonData` registry of keys, reference handlers), and the schema of JSON columns. It requires only `illuminate/*` and knows nothing of the other Folklore packages.
 
-It was extracted from `folklore/laravel-folklore` 2 ([decision 0021](https://github.com/folkloreinc/laravel-folklore/pull/107) of that package), which requires it and adds, on top of it, its 1.x declarations (`getJsonDataRelations()`, `getJsonDataColumnExtract()`, macros), its entities, its repositories and its media references. What the package doesn't know comes through hooks (`docs/json-data.md`, "Hooks"): don't add a dependency on another Folklore package here.
+It was extracted from `folklore/laravel-folklore` 2 ([decision 0021](https://github.com/folkloreinc/laravel-folklore/blob/v2.x/docs/decisions/0021-json-data-package.md) of that package), which requires it and adds, on top of it, its 1.x declarations (`getJsonDataRelations()`, `getJsonDataColumnExtract()`, macros), its entities, its repositories and its media references. What the package doesn't know comes through hooks (`docs/json-data.md`, "Hooks"): don't add a dependency on another Folklore package here.
 
-Read [`docs/json-data.md`](docs/json-data.md) and [`docs/decisions/`](docs/decisions/) before changing the cast. The roadmap is tracked in [#1](https://github.com/folkloreinc/laravel-json-data/issues/1).
+Read [`docs/json-data.md`](docs/json-data.md) and [`docs/decisions/`](docs/decisions/) before changing the cast. The plan of 1.0 is [`docs/roadmap.md`](docs/roadmap.md), in slices named by theme; [#1](https://github.com/folkloreinc/laravel-json-data/issues/1) is its index. Create a sub-issue of #1 when you start an item, and check the item in the roadmap, with the release that ships it, in the pull request that closes it. A limit that a pilot project hits is an issue labelled `niche` or `contests`.
 
 ## Working rules
 
@@ -22,28 +22,28 @@ Read [`docs/json-data.md`](docs/json-data.md) and [`docs/decisions/`](docs/decis
 
 ## Releases
 
-Released from `v1.x` on Packagist, in pre-releases until 1.0.0:
+Released from `v1.x`, the default branch, on Packagist, in pre-releases until 1.0.0. A site that requires an alpha with `minimum-stability: stable` requires this package itself (`^1.0@alpha`): a stability flag doesn't apply to the dependencies of a required package, such as laravel-folklore 2's.
 
-- **Versions:** `v1.0.0-alpha.N`, then `v1.0.0-beta.N`, `v1.0.0-rc.N` and `v1.0.0`. Until the release candidate, an alpha can break the previous one. Composer aliases `v1.x` as `1.x-dev`.
+- **Versions:** `v1.0.0-alpha.N` when a part of the roadmap is ready, then `v1.0.0-beta.N`, `v1.0.0-rc.N` and `v1.0.0`. Until the release candidate, an alpha can break the previous one. Composer aliases `v1.x` as `1.x-dev`.
 - **Changelog:** every change that users will notice goes in the `[Unreleased]` section of `CHANGELOG.md`, in the same pull request, with breaking changes under **Breaking changes**.
 - **Only from a green commit of `v1.x`:** `.github/workflows/release.yml` runs on `v1.*` tags. It refuses a tag that isn't on `v1.x`, or whose commit doesn't have the `Composer, Pint and Larastan` job and every `PHP …` job of the tests green (`.github/scripts/check-green.sh`). It publishes the GitHub release with the changelog section (`.github/scripts/release-notes.sh`), marked as a pre-release for alpha, beta and RC versions.
 
 Steps:
 
-1. Open a release pull request against `v1.x` that moves the `[Unreleased]` changes to a `## [1.0.0-alpha.1] - YYYY-MM-DD` section, with the breaking changes since the previous alpha first, and adds its link at the bottom.
+1. Open a release pull request against `v1.x` that moves the `[Unreleased]` changes to a `## [1.0.0-alpha.N] - YYYY-MM-DD` section, with the breaking changes since the previous alpha first, and adds its link at the bottom. Check in the roadmap the items it ships, with the version.
 2. Merge it, and wait for CI to pass on the merge commit of `v1.x`.
 3. Tag that commit and push the tag:
 
    ```bash
    git switch v1.x && git pull
-   git tag -a v1.0.0-alpha.1 -m "v1.0.0-alpha.1"
-   git push origin v1.0.0-alpha.1
+   git tag -a v1.0.0-alpha.N -m "v1.0.0-alpha.N"
+   git push origin v1.0.0-alpha.N
    ```
 
 4. The `Release` workflow checks the tag and CI, and publishes the GitHub release. Packagist picks up the tag.
 5. Check that [Packagist](https://packagist.org/packages/folklore/laravel-json-data) lists the version, then update `laravel-folklore`.
 
-A tag that fails the checks publishes nothing: delete it (`git push origin :refs/tags/v1.0.0-alpha.1`), fix the cause, and tag again. Never move a tag that Packagist already has.
+A tag that fails the checks publishes nothing: delete it (`git push origin :refs/tags/v1.0.0-alpha.N`), fix the cause, and tag again. Never move a tag that Packagist already has.
 
 ## Development
 

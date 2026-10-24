@@ -5,7 +5,7 @@
 
 ## Context
 
-A reference handler's `prepare()` turns what a form or a seeder gives into a model ([0006](0006-reference-handlers.md)). For media, it can ingest an uploaded file or a URL with `Mediatheque::ingest()` ([0008](0008-media-references.md)).
+A reference handler's `prepare()` turns what a form or a seeder gives into a model ([0006](0006-reference-handlers.md)). For media, it can ingest an uploaded file or a URL with `Mediatheque::ingest()` ([0008](https://github.com/folkloreinc/laravel-folklore/blob/v2.x/docs/decisions/0008-media-references.md)).
 
 If `prepare()` runs in the cast's `set()`, when the value is assigned:
 
@@ -30,4 +30,4 @@ The full rules are in [json-data.md](../json-data.md#writing).
 - Reading the column before the save returns pending values as assigned, not resolved models.
 - A model saved without events (`saveQuietly()`) keeps its pending values for the next save.
 - Inside a repository's transaction, a failed save rolls back the media row, and the mediatheque doesn't start its pipeline, which it dispatches after the commit. The stored file is an orphan that `mediatheque:prune` deletes.
-- Outside a transaction, a failed save can leave a media without a usage. Whether the mediatheque prunes media that were never used is settled with it before alpha 1 ([roadmap.md](../roadmap.md#open-questions)).
+- Outside a transaction, a failed save can leave a media without a usage. Whether the mediatheque prunes media that were never used is settled with it before alpha 1 ([roadmap.md](https://github.com/folkloreinc/laravel-folklore/blob/v2.x/docs/roadmap.md#open-questions)).

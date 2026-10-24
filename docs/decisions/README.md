@@ -2,7 +2,7 @@
 
 One file per decision. A decision is not edited once accepted: a later one replaces it and links to it.
 
-Decisions 0005 to 0007, 0013 and 0016 were taken in `folklore/laravel-folklore` 2, before JSON data moved to this package. They are copied as they were, with their numbers. Their links to other decisions and to the roadmap point to [laravel-folklore's docs](https://github.com/folkloreinc/laravel-folklore/tree/v2.x/docs), and the class names they use are laravel-folklore's 1.x names (`Folklore\Eloquent\…`), now under `Folklore\JsonData\`. The decisions about the move and the schema are laravel-folklore's [0021](https://github.com/folkloreinc/laravel-folklore/pull/107) and [0020](https://github.com/folkloreinc/laravel-folklore/pull/106); the next decisions of this package start at 0022.
+Decisions 0005 to 0007, 0013 and 0016 were taken in `folklore/laravel-folklore` 2, before JSON data moved to this package. They are copied as they were, with their numbers. Their links to other decisions and to the roadmap point to [laravel-folklore's docs](https://github.com/folkloreinc/laravel-folklore/tree/v2.x/docs), and the class names they use are laravel-folklore's 1.x names (`Folklore\Eloquent\…`), now under `Folklore\JsonData\`. The decisions about the move and the schema are laravel-folklore's [0021](https://github.com/folkloreinc/laravel-folklore/blob/v2.x/docs/decisions/0021-json-data-package.md) and [0020](https://github.com/folkloreinc/laravel-folklore/blob/v2.x/docs/decisions/0020-json-schema.md), which stay there; the next decisions of this package start at 0022.
 
 | # | Decision | Status |
 |---|---|---|
