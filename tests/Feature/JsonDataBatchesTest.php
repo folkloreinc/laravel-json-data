@@ -13,6 +13,7 @@ use Folklore\JsonData\Tests\Feature\Fixtures\Prize;
 use Folklore\JsonData\Tests\Feature\Fixtures\PrizesExceptSecret;
 use Folklore\JsonData\Tests\Feature\Fixtures\RegistryGame;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -190,12 +191,12 @@ class JsonDataBatchesTest extends JsonDataTestCase
             ['logo' => 'prizeid://'.$second->id],
         );
 
-        $this->artisan('folklore:json-references:rewrite', ['--from' => 'prizeid', '--to' => 'prize', '--model' => [BrandGame::class], '--dry-run' => true])
+        $this->artisan('json-data:rewrite-references', ['--from' => 'prizeid', '--to' => 'prize', '--model' => [BrandGame::class], '--dry-run' => true])
             ->expectsOutputToContain('Dry run')
             ->assertSuccessful();
         $this->assertSame('prizeid://'.$first->id, json_decode((string) DB::table('games')->where('id', $game->id)->value('data'), true)['prizes'][0]['prize']);
 
-        $this->artisan('folklore:json-references:rewrite', ['--from' => 'prizeid', '--to' => 'prize', '--model' => [BrandGame::class]])
+        $this->artisan('json-data:rewrite-references', ['--from' => 'prizeid', '--to' => 'prize', '--model' => [BrandGame::class]])
             ->assertSuccessful();
 
         $data = json_decode((string) DB::table('games')->where('id', $game->id)->value('data'), true);
@@ -213,24 +214,30 @@ class JsonDataBatchesTest extends JsonDataTestCase
         $game = $this->storedGame(['prizes' => [['prize' => 'prizeid://'.$prize->id]]]);
         JsonReferencesRewriteCommand::discoverUsing(fn () => [BrandGame::class]);
 
-        $this->artisan('folklore:json-references:rewrite', ['--from' => 'prizeid', '--to' => 'prize'])
+        $this->artisan('json-data:rewrite-references', ['--from' => 'prizeid', '--to' => 'prize'])
             ->assertSuccessful();
 
         $data = json_decode((string) DB::table('games')->where('id', $game->id)->value('data'), true);
         $this->assertSame('prize://first', $data['prizes'][0]['prize']);
     }
 
+    public function test_the_rewrite_command_no_longer_has_its_laravel_folklore_name()
+    {
+        $this->assertArrayHasKey('json-data:rewrite-references', Artisan::all());
+        $this->assertArrayNotHasKey('folklore:json-references:rewrite', Artisan::all());
+    }
+
     public function test_the_rewrite_command_needs_two_keys_of_the_same_model()
     {
         JsonData::map(['prize' => [Prize::class, 'handle'], 'game' => Game::class]);
 
-        $this->artisan('folklore:json-references:rewrite', ['--from' => 'prize', '--to' => 'game'])
+        $this->artisan('json-data:rewrite-references', ['--from' => 'prize', '--to' => 'game'])
             ->expectsOutputToContain('not mapped to the same model')
             ->assertFailed();
-        $this->artisan('folklore:json-references:rewrite', ['--from' => 'prize', '--to' => 'missing'])
+        $this->artisan('json-data:rewrite-references', ['--from' => 'prize', '--to' => 'missing'])
             ->expectsOutputToContain('must be mapped')
             ->assertFailed();
-        $this->artisan('folklore:json-references:rewrite', ['--from' => 'prize'])
+        $this->artisan('json-data:rewrite-references', ['--from' => 'prize'])
             ->assertFailed();
     }
 }

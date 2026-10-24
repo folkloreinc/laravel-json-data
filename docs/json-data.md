@@ -425,13 +425,14 @@ It reads the stored value, not the resolved one, so it lists references that don
 ## Rewriting references
 
 ```bash
-php artisan folklore:json-references:rewrite --from=medias --to=media --dry-run
+php artisan json-data:rewrite-references --from=medias --to=media --dry-run
 ```
 
 - Rewrites every reference with the key `--from` to the key `--to`, at the declared paths of every cast column of the models given by `--model` (repeatable), or of the models of `app/Models` and those added with `JsonReferencesRewriteCommand::discoverUsing()` (laravel-folklore adds its pages and blocks).
 - Both keys must be mapped to the same model. Identifiers are converted in batches through the model (`medias://12` → `media://med_…` reads the `uid` of media 12).
 - References that don't resolve are left as they are and reported.
 - `--dry-run` reports what would change. The command works in chunks (`--chunk`, 500 rows), without model events or global scopes, and can be run again.
+- It was `folklore:json-references:rewrite` in laravel-folklore and in this package's alpha 1 ([decisions/0022](decisions/0022-command-names.md)).
 
 `laravel-mediatheque` 2 planned a helper to rewrite JSON columns; this command is that helper.
 

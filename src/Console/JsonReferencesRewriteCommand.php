@@ -25,7 +25,7 @@ class JsonReferencesRewriteCommand extends Command
      *
      * @var string
      */
-    protected $signature = 'folklore:json-references:rewrite
+    protected $signature = 'json-data:rewrite-references
         {--from= : The key of the references to rewrite}
         {--to= : The key to write instead, mapped to the same model}
         {--model=* : A model to rewrite; by default, the models of app/Models, and those added with discoverUsing(), that cast a JSON attribute with JsonDataCast}
