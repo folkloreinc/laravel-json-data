@@ -1,16 +1,16 @@
 <?php
 
-namespace Folklore\Tests\Feature\Eloquent;
+namespace Folklore\JsonData\Tests\Feature;
 
-use Folklore\Eloquent\Exceptions\InvalidJsonReference;
-use Folklore\Eloquent\Exceptions\ReferenceNotAllowed;
-use Folklore\Eloquent\JsonData;
-use Folklore\Eloquent\JsonDataCast;
-use Folklore\Eloquent\JsonReference;
-use Folklore\Models\Block;
-use Folklore\Tests\Feature\Eloquent\Fixtures\Prize;
-use Folklore\Tests\Feature\Eloquent\Fixtures\PrizesExceptSecret;
-use Folklore\Tests\Feature\Eloquent\Fixtures\RegistryGame;
+use Folklore\JsonData\Exceptions\InvalidJsonReference;
+use Folklore\JsonData\Exceptions\ReferenceNotAllowed;
+use Folklore\JsonData\JsonData;
+use Folklore\JsonData\JsonDataCast;
+use Folklore\JsonData\JsonReference;
+use Folklore\JsonData\Tests\Feature\Fixtures\Block;
+use Folklore\JsonData\Tests\Feature\Fixtures\Prize;
+use Folklore\JsonData\Tests\Feature\Fixtures\PrizesExceptSecret;
+use Folklore\JsonData\Tests\Feature\Fixtures\RegistryGame;
 use Illuminate\Support\Facades\DB;
 
 /**

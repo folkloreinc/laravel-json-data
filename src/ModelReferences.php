@@ -1,17 +1,15 @@
 <?php
 
-namespace Folklore\Eloquent;
+namespace Folklore\JsonData;
 
-use Folklore\Contracts\Eloquent\ReferenceHandler;
-use Folklore\Contracts\Entities\Entity;
-use Folklore\Contracts\Entities\HasModel;
-use Folklore\Contracts\Entities\ToEntity;
+use Folklore\JsonData\Contracts\ReferenceHandler;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 
 /**
  * The default reference handler (docs/json-data.md, "Default handler"): it takes models,
- * entities, references and identifiers, and resolves identifiers with one `whereIn()` on
+ * values that `JsonData::unwrapUsing()` turns into one (entities), references and
+ * identifiers, and resolves identifiers with one `whereIn()` on
  * the key's column. Applications extend it for their own keys.
  */
 class ModelReferences implements ReferenceHandler
@@ -19,24 +17,10 @@ class ModelReferences implements ReferenceHandler
     public function prepare(mixed $value, ReferenceContext $context): ?Model
     {
         $target = $context->target;
+        $value = JsonData::unwrap($value, $target);
 
         if ($value instanceof Model) {
             return $target->accepts($value) ? $value : null;
-        }
-
-        if ($value instanceof HasModel) {
-            $model = $value->getModel();
-            if ($target->accepts($model)) {
-                return $model;
-            }
-        }
-
-        if ($value instanceof ToEntity) {
-            $value = $value->toEntity();
-        }
-
-        if ($value instanceof Entity) {
-            return $this->find($value->id(), $context);
         }
 
         if (is_string($value) && ! is_null($entry = JsonData::parse($value))) {

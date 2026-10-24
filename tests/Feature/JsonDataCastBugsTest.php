@@ -1,39 +1,21 @@
 <?php
 
-namespace Folklore\Tests\Feature\Eloquent;
+namespace Folklore\JsonData\Tests\Feature;
 
-use Folklore\Contracts\Repositories\Pages;
-use Folklore\Eloquent\JsonDataCast;
-use Folklore\Models\Page as PageModel;
-use Folklore\Tests\Feature\Eloquent\Fixtures\Contest;
-use Folklore\Tests\Feature\Eloquent\Fixtures\Game;
-use Folklore\Tests\Feature\Eloquent\Fixtures\Games;
-use Folklore\Tests\Feature\Eloquent\Fixtures\Prize;
+use Folklore\JsonData\JsonDataCast;
+use Folklore\JsonData\Tests\Feature\Fixtures\Contest;
+use Folklore\JsonData\Tests\Feature\Fixtures\Game;
+use Folklore\JsonData\Tests\Feature\Fixtures\Page as PageModel;
+use Folklore\JsonData\Tests\Feature\Fixtures\Prize;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Regression tests for the bugs of JsonDataCast fixed in 1.1.8 (#59), and the
- * behaviours their fixes keep on purpose.
+ * Regression tests for the bugs of JsonDataCast fixed in laravel-folklore 1.1.8
+ * (folkloreinc/laravel-folklore#59), and the behaviours their fixes keep on purpose. The
+ * ones that go through laravel-folklore's repositories stay in laravel-folklore.
  */
 class JsonDataCastBugsTest extends JsonDataTestCase
 {
-    /**
-     * Fixed: syncRelations() associated the parent, which only set the foreign
-     * key, then the repository refreshed the model, which discarded it.
-     */
-    public function test_the_repository_saves_a_belongs_to_reference()
-    {
-        $pages = $this->app->make(Pages::class);
-        $parent = $pages->create(['handle' => 'parent', 'title' => ['fr' => 'Parent']]);
-
-        $child = $pages->create(['handle' => 'child', 'title' => ['fr' => 'Enfant'], 'parent' => $parent]);
-
-        $model = PageModel::find($child->id());
-        $this->assertSame('parent://'.$parent->id(), $this->rawData($model)['parent']);
-        $this->assertEquals($parent->id(), $model->parent_id);
-        $this->assertTrue($model->data['parent']->is($parent->getModel()));
-    }
-
     public function test_the_sync_saves_a_belongs_to_reference_without_a_refresh()
     {
         $parent = PageModel::create(['handle' => 'parent']);
@@ -48,50 +30,43 @@ class JsonDataCastBugsTest extends JsonDataTestCase
     }
 
     /**
-     * The sync still only dissociates in memory: a parent_id set through its
-     * column, without a reference in the data, is kept.
-     */
-    public function test_a_parent_set_through_its_column_is_kept_without_a_reference()
-    {
-        $pages = $this->app->make(Pages::class);
-        $parent = $pages->create(['handle' => 'parent', 'title' => ['fr' => 'Parent']]);
-
-        $child = $pages->create(['handle' => 'child', 'title' => ['fr' => 'Enfant'], 'parent_id' => $parent->id()]);
-
-        $this->assertEquals($parent->id(), PageModel::find($child->id())->parent_id);
-    }
-
-    /**
      * Fixed: the repository merged the update into the resolved data, where a
-     * lazy relation that isn't loaded reads as null, and wrote it back.
+     * lazy relation that isn't loaded reads as null, and wrote it back. It now merges
+     * into getValueWithUnresolvedReferences().
      */
     public function test_a_partial_update_keeps_the_references_that_dont_resolve()
     {
         $prize = Prize::create(['handle' => 'grand-prize']);
-        $games = $this->app->make(Games::class);
-        $game = $games->create(['handle' => 'quiz', 'prizes' => [['prize' => $prize, 'quantity' => 1]]]);
-        $this->assertSame('prizes://'.$prize->id, $this->rawData($game->getModel())['prizes'][0]['prize']);
+        $game = new Game(['handle' => 'quiz']);
+        $game->data = ['prizes' => [['prize' => $prize, 'quantity' => 1]]];
+        $game->save();
+        $this->assertSame('prizes://'.$prize->id, $this->rawData($game)['prizes'][0]['prize']);
 
-        $games->update($game->id(), ['title' => ['fr' => 'Le quiz']]);
+        $game = Game::findOrFail($game->id);
+        $game->data = array_merge(JsonDataCast::getValueWithUnresolvedReferences($game, 'data'), ['title' => ['fr' => 'Le quiz']]);
+        $game->save();
 
         $this->assertEquals(
             [['prize' => 'prizes://'.$prize->id, 'quantity' => 1]],
-            $this->rawData($game->getModel())['prizes'],
+            $this->rawData($game)['prizes'],
         );
-        $this->assertTrue(Game::with('prizes')->find($game->id())->data['prizes'][0]['prize']->is($prize));
+        $this->assertTrue(Game::with('prizes')->find($game->id)->data['prizes'][0]['prize']->is($prize));
     }
 
     public function test_a_partial_update_still_clears_a_reference_it_sets_to_null()
     {
         $prize = Prize::create(['handle' => 'grand-prize']);
-        $games = $this->app->make(Games::class);
-        $game = $games->create(['handle' => 'quiz', 'prizes' => [['prize' => $prize, 'quantity' => 1]]]);
+        $game = new Game(['handle' => 'quiz']);
+        $game->data = ['prizes' => [['prize' => $prize, 'quantity' => 1]]];
+        $game->save();
 
-        $games->update($game->id(), ['prizes' => [['prize' => null, 'quantity' => 2]]]);
+        $game = Game::findOrFail($game->id);
+        $game->data = array_merge(JsonDataCast::getValueWithUnresolvedReferences($game, 'data'), ['prizes' => [['prize' => null, 'quantity' => 2]]]);
+        $game->save();
 
         $this->assertEquals(
             [['prize' => null, 'quantity' => 2]],
-            $this->rawData($game->getModel())['prizes'],
+            $this->rawData($game)['prizes'],
         );
     }
 
@@ -114,15 +89,15 @@ class JsonDataCastBugsTest extends JsonDataTestCase
         $this->assertTrue(Game::find($game->id)->data['image']['fr']->is($media));
     }
 
-    public function test_a_before_set_macro_doesnt_receive_a_stored_reference()
+    public function test_a_before_set_callback_doesnt_receive_a_stored_reference()
     {
         $media = $this->makeMedia();
         $received = [];
-        JsonDataCast::macro('medias:before_set', function ($item) use (&$received) {
+        Game::$imageOptions = ['before_set' => function ($item) use (&$received) {
             $received[] = $item;
 
             return $item;
-        });
+        }];
 
         $game = new Game;
         $game->data = ['image' => ['fr' => 'medias://'.$media->id, 'en' => $media]];

@@ -1,8 +1,8 @@
 <?php
 
-namespace Folklore\Eloquent\Exceptions;
+namespace Folklore\JsonData\Exceptions;
 
-use Folklore\Eloquent\ReferenceContext;
+use Folklore\JsonData\ReferenceContext;
 use Illuminate\Database\Eloquent\Model;
 use RuntimeException;
 

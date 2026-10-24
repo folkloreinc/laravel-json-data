@@ -1,8 +1,8 @@
 <?php
 
-namespace Folklore\Contracts\Eloquent;
+namespace Folklore\JsonData\Contracts;
 
-use Folklore\Eloquent\ReferenceContext;
+use Folklore\JsonData\ReferenceContext;
 use Illuminate\Database\Eloquent\Model;
 
 /**

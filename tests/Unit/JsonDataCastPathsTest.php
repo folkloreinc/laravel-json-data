@@ -1,8 +1,8 @@
 <?php
 
-namespace Folklore\Tests\Unit\Eloquent;
+namespace Folklore\JsonData\Tests\Unit;
 
-use Folklore\Eloquent\JsonDataCast;
+use Folklore\JsonData\JsonDataCast;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 

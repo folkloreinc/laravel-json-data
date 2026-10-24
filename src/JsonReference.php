@@ -1,9 +1,9 @@
 <?php
 
-namespace Folklore\Eloquent;
+namespace Folklore\JsonData;
 
-use Folklore\Contracts\Eloquent\ReferenceHandler;
-use Folklore\Eloquent\Exceptions\InvalidJsonReference;
+use Folklore\JsonData\Contracts\ReferenceHandler;
+use Folklore\JsonData\Exceptions\InvalidJsonReference;
 use Illuminate\Database\Eloquent\Model;
 
 /**

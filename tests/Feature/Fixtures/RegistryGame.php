@@ -1,6 +1,6 @@
 <?php
 
-namespace Folklore\Tests\Feature\Eloquent\Fixtures;
+namespace Folklore\JsonData\Tests\Feature\Fixtures;
 
 /**
  * A game that refers to its prizes by handle (`prize://grand-prize`), through the
@@ -13,7 +13,7 @@ class RegistryGame extends Game
      */
     public static array $prizeOptions = [];
 
-    public function getJsonDataRelations($key, $value, $attributes = [])
+    public function jsonDataReferences(string $attribute, mixed $value, array $attributes): array
     {
         return [
             'image.*' => 'medias',

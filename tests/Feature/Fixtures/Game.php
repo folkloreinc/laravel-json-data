@@ -1,22 +1,23 @@
 <?php
 
-namespace Folklore\Tests\Feature\Eloquent\Fixtures;
+namespace Folklore\JsonData\Tests\Feature\Fixtures;
 
-use Folklore\Contracts\Eloquent\HasJsonDataColumnExtract;
-use Folklore\Contracts\Eloquent\HasJsonDataRelations;
-use Folklore\Contracts\Entities\ToEntity;
-use Folklore\Eloquent\JsonDataCast;
-use Folklore\Mediatheque\Concerns\HasMedias;
-use Folklore\Models\Block;
+use Folklore\JsonData\JsonDataCast;
+use Folklore\JsonData\Tests\DeclaresJsonData;
 use Illuminate\Database\Eloquent\Model;
 
 /**
  * A game of a contest, as the contests platform declares it: localized images,
  * images deep in the questions, blocks, and lazy prizes.
  */
-class Game extends Model implements HasJsonDataColumnExtract, HasJsonDataRelations, ToEntity
+class Game extends Model implements DeclaresJsonData
 {
-    use HasMedias;
+    /**
+     * Options added to the declaration of the `image.*` paths.
+     *
+     * @var array<string, mixed>
+     */
+    public static array $imageOptions = [];
 
     protected $table = 'games';
 
@@ -26,10 +27,10 @@ class Game extends Model implements HasJsonDataColumnExtract, HasJsonDataRelatio
         'data' => JsonDataCast::class,
     ];
 
-    public function getJsonDataRelations($key, $value, $attributes = [])
+    public function jsonDataReferences(string $attribute, mixed $value, array $attributes): array
     {
         return [
-            'image.*' => 'medias',
+            'image.*' => array_merge(['relation' => 'medias'], self::$imageOptions),
             'questions.*.choices.*.image' => 'medias',
             'blocks.*' => 'blocks',
             'prizes.*.prize' => [
@@ -39,11 +40,16 @@ class Game extends Model implements HasJsonDataColumnExtract, HasJsonDataRelatio
         ];
     }
 
-    public function getJsonDataColumnExtract($key, $value, $attributes = [])
+    public function jsonDataColumns(string $attribute, mixed $value, array $attributes): array
     {
         return collect(config('locale.locales'))
             ->mapWithKeys(fn ($locale) => ['title.'.$locale => 'title_'.$locale])
             ->all();
+    }
+
+    public function medias()
+    {
+        return $this->morphToMany(Media::class, 'mediable', 'mediables');
     }
 
     public function blocks()
@@ -54,10 +60,5 @@ class Game extends Model implements HasJsonDataColumnExtract, HasJsonDataRelatio
     public function prizes()
     {
         return $this->morphToMany(Prize::class, 'prizable', 'prizes_pivot')->withTimestamps();
-    }
-
-    public function toEntity(): FixtureEntity
-    {
-        return new FixtureEntity($this);
     }
 }

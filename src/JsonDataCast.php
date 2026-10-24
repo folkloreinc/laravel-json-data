@@ -1,16 +1,11 @@
 <?php
 
-namespace Folklore\Eloquent;
+namespace Folklore\JsonData;
 
-use Folklore\Contracts\Eloquent\HasJsonDataColumnExtract;
-use Folklore\Contracts\Eloquent\HasJsonDataRelations;
-use Folklore\Contracts\Eloquent\ReferenceHandler;
-use Folklore\Contracts\Entities\Entity;
-use Folklore\Contracts\Entities\HasModel;
-use Folklore\Contracts\Entities\ToEntity;
-use Folklore\Eloquent\Exceptions\InvalidJsonReference;
-use Folklore\Eloquent\Exceptions\ReferenceNotAllowed;
-use Folklore\Support\Data;
+use Folklore\JsonData\Contracts\ReferenceHandler;
+use Folklore\JsonData\Exceptions\InvalidJsonReference;
+use Folklore\JsonData\Exceptions\ReferenceNotAllowed;
+use Folklore\JsonData\Support\Paths;
 use Illuminate\Container\Container;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
 use Illuminate\Contracts\Events\Dispatcher;
@@ -23,7 +18,6 @@ use Illuminate\Database\Eloquent\Relations\MorphOneOrMany;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Traits\Macroable;
 use InvalidArgumentException;
 use WeakMap;
 
@@ -34,11 +28,13 @@ use WeakMap;
  */
 class JsonDataCast implements CastsAttributes
 {
-    use Macroable;
-
     /**
-     * The handle of laravel-mediatheque's pivot under which the media referenced in the
-     * JSON columns of a model are synced.
+     * The handle of laravel-mediatheque's pivot under which laravel-folklore's medias
+     * module syncs the media referenced in the JSON columns of a model, through
+     * `JsonData::syncUsing()`.
+     *
+     * @deprecated Kept for the code that read it here before the package left
+     * laravel-folklore. Removed in 2.0.
      */
     public const MEDIAS_HANDLE = 'json';
 
@@ -80,14 +76,14 @@ class JsonDataCast implements CastsAttributes
     {
         $value = ! empty($value) ? json_decode($value, true) : null;
 
-        if ($model instanceof HasJsonDataRelations) {
+        $relations = self::relations($model, $key, $value, $attributes);
+        if (count($relations) > 0) {
             $raw = $attributes[$key] ?? null;
-            $relations = self::relations($model, $key, $value, $attributes);
             $resolved = self::resolveMappedReferences($model, $key, $raw, $value, $relations);
 
             foreach ($relations as $relation) {
                 foreach (self::paths($relation) as $pattern) {
-                    $value = Data::reducePaths([$pattern], $value, function (mixed $newValue, int|string $path, mixed $item) use (
+                    $value = Paths::reduce([$pattern], $value, function (mixed $newValue, int|string $path, mixed $item) use (
                         $model,
                         $relation,
                         $pattern,
@@ -102,13 +98,7 @@ class JsonDataCast implements CastsAttributes
                             return $newValue;
                         }
                         $relationName = self::relationName($model, $relation, $item, $path);
-                        $getter =
-                            data_get($relation, 'get') ??
-                            (data_get(
-                                static::$macros,
-                                get_class($model).':'.$relationName.':get'
-                            ) ??
-                                data_get(static::$macros, $relationName.':get'));
+                        $getter = self::callback($model, $relation, $relationName, 'get');
                         if (isset($getter)) {
                             $newItem = $getter($item, $path, $model, $relation);
                             data_set($newValue, $path, $newItem);
@@ -165,16 +155,17 @@ class JsonDataCast implements CastsAttributes
      */
     public function set($model, $key, $value, $attributes)
     {
-        if ($model instanceof HasJsonDataRelations) {
+        $relations = self::relations($model, $key, $value, $attributes);
+        if (count($relations) > 0) {
             self::listen($model);
             self::forgetPending($model, $key);
             $rawStored = $model->getAttributes()[$key] ?? null;
             $stored = is_string($rawStored) && $rawStored !== '' ? json_decode($rawStored, true) : null;
 
-            foreach (self::relations($model, $key, $value, $attributes) as $relation) {
+            foreach ($relations as $relation) {
                 foreach (self::paths($relation) as $pattern) {
                     $recursive = self::isRecursive($pattern);
-                    $value = Data::reducePaths([$pattern], $value, function (
+                    $value = Paths::reduce([$pattern], $value, function (
                         mixed $newValue,
                         int|string $path,
                         mixed $item
@@ -195,26 +186,14 @@ class JsonDataCast implements CastsAttributes
                         if (self::isAcceptedReference($model, $item, $relationName)) {
                             return $newValue;
                         }
-                        if ($recursive && ! self::isModelOrEntity($item)) {
+                        if ($recursive && ! self::isModelOrUnwrappable($item)) {
                             return $newValue;
                         }
-                        $beforeSet =
-                            data_get($relation, 'before_set') ??
-                            (data_get(
-                                static::$macros,
-                                get_class($model).':'.$relationName.':before_set'
-                            ) ??
-                                data_get(static::$macros, $relationName.':before_set'));
+                        $beforeSet = self::callback($model, $relation, $relationName, 'before_set');
                         if (isset($beforeSet)) {
                             $item = $beforeSet($item, $path, $model, $relation, $relationName);
                         }
-                        $setter =
-                            data_get($relation, 'set') ??
-                            (data_get(
-                                static::$macros,
-                                get_class($model).':'.$relationName.':set'
-                            ) ??
-                                data_get(static::$macros, $relationName.':set'));
+                        $setter = self::callback($model, $relation, $relationName, 'set');
                         if (isset($setter)) {
                             $newItem = $setter($item, $path, $model, $relation, $relationName);
                             data_set($newValue, $path, $newItem);
@@ -243,10 +222,11 @@ class JsonDataCast implements CastsAttributes
             }
         }
 
-        if ($model instanceof HasJsonDataColumnExtract) {
+        $extracted = self::extractedColumns($model, $key, $value, $attributes);
+        if (count($extracted) > 0) {
             return array_merge(
                 [$key => ! is_null($value) ? json_encode($value, JSON_THROW_ON_ERROR) : null],
-                self::extractedColumns($model, $key, $value, $attributes),
+                $extracted,
             );
         }
 
@@ -254,33 +234,31 @@ class JsonDataCast implements CastsAttributes
     }
 
     /**
-     * The values of a JSON attribute that the model copies into columns.
+     * The values of a JSON attribute that the model copies into columns, as declared.
      *
      * @param  array<array-key, mixed>  $attributes
      * @return array<string, mixed>
      */
-    protected static function extractedColumns(HasJsonDataColumnExtract $model, string $key, mixed $value, array $attributes): array
+    protected static function extractedColumns(Model $model, string $key, mixed $value, array $attributes): array
     {
-        $columns = $model->getJsonDataColumnExtract($key, $value, $attributes);
+        $columns = JsonData::declarations($model, $key, $value, $attributes)['columns'];
         $extracted = [];
-        foreach (is_array($columns) ? $columns : [] as $path => $column) {
-            if (is_string($column)) {
-                $extracted[$column] = data_get($value, (string) $path);
-            }
+        foreach ($columns as $path => $column) {
+            $extracted[$column] = data_get($value, $path);
         }
 
         return $extracted;
     }
 
     /**
-     * The relations a model declares for a JSON attribute, normalized.
+     * The reference paths declared for a JSON attribute, normalized.
      *
      * @param  array<array-key, mixed>  $attributes
      * @return list<array<string, mixed>>
      */
-    protected static function relations(HasJsonDataRelations $model, string $key, mixed $value, array $attributes): array
+    protected static function relations(Model $model, string $key, mixed $value, array $attributes): array
     {
-        $declared = $model->getJsonDataRelations($key, $value, $attributes);
+        $declared = JsonData::declarations($model, $key, $value, $attributes)['references'];
         $relations = [];
         foreach (self::normalizeJsonDataRelations(is_array($declared) || $declared instanceof Collection ? $declared : []) as $relation) {
             if (is_array($relation)) {
@@ -331,9 +309,7 @@ class JsonDataCast implements CastsAttributes
             }
             // Written raw: the other paths were sorted when they were assigned
             $attributes = [$key => json_encode($value, JSON_THROW_ON_ERROR)];
-            if ($model instanceof HasJsonDataColumnExtract) {
-                $attributes = array_merge($attributes, self::extractedColumns($model, $key, $value, $model->getAttributes()));
-            }
+            $attributes = array_merge($attributes, self::extractedColumns($model, $key, $value, $model->getAttributes()));
             $model->setRawAttributes(array_merge($model->getAttributes(), $attributes));
         }
     }
@@ -355,7 +331,7 @@ class JsonDataCast implements CastsAttributes
         $eager = [];
 
         foreach ($models as $model) {
-            if (! $model instanceof Model || ! $model instanceof HasJsonDataRelations) {
+            if (! $model instanceof Model) {
                 continue;
             }
             foreach (self::castAttributes($model, $attributes) as $attribute) {
@@ -427,11 +403,9 @@ class JsonDataCast implements CastsAttributes
     public static function references(Model $model, ?array $attributes = null): Collection
     {
         $entries = [];
-        if ($model instanceof HasJsonDataRelations) {
-            foreach (self::castAttributes($model, $attributes) as $attribute) {
-                foreach (self::storedReferences($model, $attribute) as [$entry]) {
-                    $entries[] = $entry;
-                }
+        foreach (self::castAttributes($model, $attributes) as $attribute) {
+            foreach (self::storedReferences($model, $attribute) as [$entry]) {
+                $entries[] = $entry;
             }
         }
 
@@ -463,7 +437,7 @@ class JsonDataCast implements CastsAttributes
      *
      * @return list<array{JsonReferenceEntry, array<string, mixed>}>
      */
-    protected static function storedReferences(HasJsonDataRelations&Model $model, string $attribute): array
+    protected static function storedReferences(Model $model, string $attribute): array
     {
         $raw = $model->getAttributes()[$attribute] ?? null;
         $value = is_string($raw) && $raw !== '' ? json_decode($raw, true) : null;
@@ -476,11 +450,8 @@ class JsonDataCast implements CastsAttributes
             $relationName = self::relationName($model, $relation, null, null);
             $related = self::relatedClass($model, $relationName);
             foreach (self::paths($relation) as $pattern) {
-                foreach (Data::matchingPaths([$pattern], $value) as $path) {
-                    if (! is_string($path) && ! is_int($path)) {
-                        continue;
-                    }
-                    $item = data_get($value, (string) $path);
+                foreach (Paths::matching([$pattern], $value) as $path) {
+                    $item = data_get($value, $path);
                     $entry = is_string($item) ? JsonData::parse($item) : null;
                     if (is_null($entry)) {
                         continue;
@@ -524,7 +495,7 @@ class JsonDataCast implements CastsAttributes
     public static function syncRelations($model, ?array $only = null)
     {
         // Only models have casts and relations to sync
-        if (! ($model instanceof HasJsonDataRelations) || ! ($model instanceof Model)) {
+        if (! ($model instanceof Model)) {
             return;
         }
 
@@ -579,16 +550,8 @@ class JsonDataCast implements CastsAttributes
             }
             if (isset($relation['sync'])) {
                 $relation['sync']($relationClass, $ids, $relation);
-            } elseif (self::syncsMediasByHandle($model, $relationName) && method_exists($model, 'syncMedias')) {
-                // Only the rows of the JSON references: the media attached otherwise stay.
-                // Media keys are integers; a reference that isn't one can't be a media.
-                $mediaIds = [];
-                foreach ($ids as $id) {
-                    if (is_int($id) || (is_string($id) && ctype_digit($id))) {
-                        $mediaIds[] = (int) $id;
-                    }
-                }
-                $model->syncMedias([self::MEDIAS_HANDLE => $mediaIds]);
+            } elseif ($relationClass instanceof Relation && self::syncedByHook($model, $relationName, $relationClass, $ids)) {
+                // A callback of JsonData::syncUsing() synced it
             } elseif ($relationClass instanceof BelongsToMany) {
                 $relationClass->sync($ids);
             } elseif ($relationClass instanceof BelongsTo && count($ids) > 0) {
@@ -622,9 +585,6 @@ class JsonDataCast implements CastsAttributes
         // No refresh(): the synced relations are read again when they are next used
         foreach (array_keys($relationsMap) as $relationName) {
             $model->unsetRelation($relationName);
-        }
-        if (count($relationsMap) > 0 && method_exists($model, 'syncMedias')) {
-            $model->unsetRelation('medias');
         }
         unset(self::resolvedStore()[$model]);
 
@@ -662,7 +622,7 @@ class JsonDataCast implements CastsAttributes
         $keys = [];
         $byKey = [];
         foreach ($paths as $pattern) {
-            foreach (Data::matchingPaths([$pattern], $data) as $path) {
+            foreach (Paths::matching([$pattern], $data) as $path) {
                 $item = data_get($data, $path);
                 $entry = is_string($item) ? JsonData::parse($item) : null;
                 if (is_null($entry)) {
@@ -703,15 +663,21 @@ class JsonDataCast implements CastsAttributes
     }
 
     /**
-     * Whether the relation is the `medias()` of laravel-mediatheque 2's HasMedias, whose
-     * pivot holds the usages of every media: the references of JSON data are synced under
-     * their own handle, so that the media attached otherwise (`attachMedia()`) stay
-     * (laravel-mediatheque's docs/decisions/0020).
+     * Whether a callback of `JsonData::syncUsing()` synced the relation, such as
+     * laravel-folklore's sync of the media into laravel-mediatheque's usage graph.
+     *
+     * @param  Relation<Model, Model, mixed>  $relation
+     * @param  list<mixed>  $ids
      */
-    protected static function syncsMediasByHandle(Model $model, mixed $relationName): bool
+    protected static function syncedByHook(Model $model, string $relationName, Relation $relation, array $ids): bool
     {
-        return $relationName === 'medias'
-            && in_array('Folklore\\Mediatheque\\Concerns\\HasMedias', class_uses_recursive($model), true);
+        foreach (JsonData::syncers() as $syncer) {
+            if ($syncer($model, $relationName, $relation, $ids)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -774,10 +740,22 @@ class JsonDataCast implements CastsAttributes
         return $relations;
     }
 
+    /**
+     * The 1.x reference of a value: `{prefix}://{id}`, from a model, a value that
+     * `JsonData::unwrapUsing()` turns into one, an id or an array with an `id`.
+     *
+     * @param  mixed  $item
+     * @param  string  $pathPrefix
+     */
     public static function getPathFromItem($item, $pathPrefix): ?string
     {
-        $id = to_id($item);
-        if (! empty($id)) {
+        $item = JsonData::unwrap($item);
+        $id = match (true) {
+            is_array($item) => $item['id'] ?? null,
+            $item instanceof Model => $item->getKey(),
+            default => $item,
+        };
+        if ((is_int($id) || is_float($id) || is_string($id)) && ! empty($id)) {
             return $pathPrefix.'://'.$id;
         }
 
@@ -814,7 +792,6 @@ class JsonDataCast implements CastsAttributes
         $value = $model->getAttribute($key);
         $castType = $model->getCasts()[$key] ?? null;
         if (
-            ! ($model instanceof HasJsonDataRelations) ||
             ! is_string($castType) ||
             ! is_a($castType, self::class, true) ||
             ! is_array($value)
@@ -832,10 +809,10 @@ class JsonDataCast implements CastsAttributes
         foreach (self::relations($model, $key, $storedValue, $model->getAttributes()) as $relation) {
             array_push($paths, ...self::paths($relation));
         }
-        foreach (Data::matchingPaths($paths, $storedValue) as $path) {
+        foreach (Paths::matching($paths, $storedValue) as $path) {
             $reference = data_get($storedValue, $path);
             if (! is_null(self::getRelationAndIdFromPath($reference)) && is_null(data_get($value, $path))) {
-                data_set($value, $path, $reference);
+                data_set($value, (string) $path, $reference);
             }
         }
 
@@ -872,7 +849,7 @@ class JsonDataCast implements CastsAttributes
             foreach ($relations as $relation) {
                 $relationName = self::relationName($model, $relation, null, null);
                 foreach (self::paths($relation) as $pattern) {
-                    foreach (Data::matchingPaths([$pattern], $value) as $path) {
+                    foreach (Paths::matching([$pattern], $value) as $path) {
                         $item = data_get($value, $path);
                         $entry = is_string($item) ? JsonData::parse($item) : null;
                         if (is_null($entry) || ! $entry->isMapped()) {
@@ -1057,9 +1034,30 @@ class JsonDataCast implements CastsAttributes
         return ! is_null($related) && (bool) $entry->target?->accepts($related);
     }
 
-    protected static function isModelOrEntity(mixed $item): bool
+    /**
+     * A callback of a declaration (`get`, `set`, `before_set`): given in its options, or
+     * else by its `callbacks` option, a resolver given the callback's name, the name of
+     * the relation and the model, through which laravel-folklore passes its 1.x macros.
+     *
+     * @param  array<string, mixed>  $relation
+     */
+    protected static function callback(Model $model, array $relation, string $relationName, string $name): ?callable
     {
-        return $item instanceof Model || $item instanceof Entity || $item instanceof HasModel || $item instanceof ToEntity;
+        $callback = $relation[$name] ?? null;
+        if (is_null($callback) && isset($relation['callbacks']) && is_callable($relation['callbacks'])) {
+            $callback = call_user_func($relation['callbacks'], $name, $relationName, $model);
+        }
+
+        return is_callable($callback) ? $callback : null;
+    }
+
+    /**
+     * Whether a value is a model, or a value that `JsonData::unwrapUsing()` turns into a
+     * model or an identifier (an entity).
+     */
+    protected static function isModelOrUnwrappable(mixed $item): bool
+    {
+        return $item instanceof Model || (is_object($item) && JsonData::unwrap($item) !== $item);
     }
 
     /**

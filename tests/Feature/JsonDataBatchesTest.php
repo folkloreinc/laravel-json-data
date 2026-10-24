@@ -1,24 +1,25 @@
 <?php
 
-namespace Folklore\Tests\Feature\Eloquent;
+namespace Folklore\JsonData\Tests\Feature;
 
-use Folklore\Eloquent\JsonData;
-use Folklore\Eloquent\JsonDataCast;
-use Folklore\Eloquent\JsonReference;
-use Folklore\Eloquent\JsonReferenceEntry;
-use Folklore\Tests\Feature\Eloquent\Fixtures\BrandGame;
-use Folklore\Tests\Feature\Eloquent\Fixtures\Game;
-use Folklore\Tests\Feature\Eloquent\Fixtures\Prize;
-use Folklore\Tests\Feature\Eloquent\Fixtures\PrizesExceptSecret;
-use Folklore\Tests\Feature\Eloquent\Fixtures\RegistryGame;
-use Folklore\Tests\Feature\Eloquent\Fixtures\RegistryGames;
+use Folklore\JsonData\Console\JsonReferencesRewriteCommand;
+use Folklore\JsonData\JsonData;
+use Folklore\JsonData\JsonDataCast;
+use Folklore\JsonData\JsonReference;
+use Folklore\JsonData\JsonReferenceEntry;
+use Folklore\JsonData\Tests\Feature\Fixtures\BrandGame;
+use Folklore\JsonData\Tests\Feature\Fixtures\Game;
+use Folklore\JsonData\Tests\Feature\Fixtures\Prize;
+use Folklore\JsonData\Tests\Feature\Fixtures\PrizesExceptSecret;
+use Folklore\JsonData\Tests\Feature\Fixtures\RegistryGame;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Batch resolution, the reference listing, several JSON attributes per repository, and the
- * rewrite command (docs/json-data.md).
+ * Batch resolution, the reference listing, several JSON attributes per model, and the
+ * rewrite command (docs/json-data.md). The repositories' JSON attributes and
+ * `withJsonReferences()` are tested in laravel-folklore.
  */
 class JsonDataBatchesTest extends JsonDataTestCase
 {
@@ -179,48 +180,6 @@ class JsonDataBatchesTest extends JsonDataTestCase
         $this->assertCount(0, JsonData::references($game, ['other']));
     }
 
-    public function test_with_json_references_returns_a_copy_that_loads_its_results()
-    {
-        JsonData::map(['prize' => [Prize::class, 'handle']]);
-        $this->prize('a');
-        $this->prize('b');
-        $this->storedGame(['prizes' => [['prize' => 'prize://a']]]);
-        $this->storedGame(['prizes' => [['prize' => 'prize://b']]]);
-
-        $games = new RegistryGames;
-        $loading = $games->withJsonReferences();
-        $results = $loading->get();
-        $reading = $this->queriesOf(function () use ($results) {
-            foreach ($results as $game) {
-                $game->getModel()->data;
-            }
-        });
-
-        $this->assertFalse($games->loadsJsonReferences());
-        $this->assertTrue($loading->loadsJsonReferences());
-        $this->assertSame([], $reading);
-        $this->assertCount(2, $results);
-    }
-
-    public function test_a_repository_merges_an_update_into_its_other_json_attributes()
-    {
-        JsonData::map(['prize' => [Prize::class, 'handle']]);
-        $logo = $this->prize('logo');
-        $favicon = $this->prize('favicon');
-        $game = $this->storedGame(['title' => ['fr' => 'Le quiz']], ['logo' => 'prize://logo', 'favicon' => 'prize://gone', 'alt' => 'Logo']);
-        $logo->delete();
-
-        $updated = (new RegistryGames)->update((string) $game->id, ['images' => ['logo' => $favicon], 'title' => ['en' => 'The quiz']]);
-
-        $stored = json_decode((string) DB::table('games')->where('id', $game->id)->value('images'), true);
-        // MySQL's JSON type orders the keys of an object
-        $this->assertEquals(['logo' => 'prize://favicon', 'favicon' => 'prize://gone', 'alt' => 'Logo'], $stored);
-        $this->assertNotNull($updated);
-        // The first JSON attribute keeps its 1.x merge: each key given replaces its value
-        $data = json_decode((string) DB::table('games')->where('id', $game->id)->value('data'), true);
-        $this->assertSame(['title' => ['en' => 'The quiz']], $data);
-    }
-
     public function test_the_rewrite_command_rewrites_one_key_to_another()
     {
         JsonData::map(['prize' => [Prize::class, 'handle'], 'prizeid' => Prize::class]);
@@ -245,6 +204,20 @@ class JsonDataBatchesTest extends JsonDataTestCase
         $this->assertSame('prizeid://999', $data['prizes'][1]['prize']);
         $this->assertSame('prizeid://'.$first->id, $data['title']);
         $this->assertSame('prize://second', $images['logo']);
+    }
+
+    public function test_the_rewrite_command_rewrites_the_models_added_with_discover_using()
+    {
+        JsonData::map(['prize' => [Prize::class, 'handle'], 'prizeid' => Prize::class]);
+        $prize = $this->prize('first');
+        $game = $this->storedGame(['prizes' => [['prize' => 'prizeid://'.$prize->id]]]);
+        JsonReferencesRewriteCommand::discoverUsing(fn () => [BrandGame::class]);
+
+        $this->artisan('folklore:json-references:rewrite', ['--from' => 'prizeid', '--to' => 'prize'])
+            ->assertSuccessful();
+
+        $data = json_decode((string) DB::table('games')->where('id', $game->id)->value('data'), true);
+        $this->assertSame('prize://first', $data['prizes'][0]['prize']);
     }
 
     public function test_the_rewrite_command_needs_two_keys_of_the_same_model()

@@ -1,19 +1,17 @@
 <?php
 
-namespace Folklore\Tests\Feature\Eloquent;
+namespace Folklore\JsonData\Tests\Feature;
 
-use Folklore\Eloquent\JsonDataCast;
-use Folklore\Tests\Feature\Eloquent\Fixtures\BrandGame;
-use Folklore\Tests\Feature\Eloquent\Fixtures\Game;
-use Folklore\Tests\Feature\Eloquent\Fixtures\Games;
-use Folklore\Tests\Feature\Eloquent\Fixtures\Prize;
+use Folklore\JsonData\Tests\Feature\Fixtures\BrandGame;
+use Folklore\JsonData\Tests\Feature\Fixtures\Game;
+use Folklore\JsonData\Tests\Feature\Fixtures\Prize;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
  * The cast syncs the relations of a model's references when the model is saved, however
- * it is saved (docs/json-data.md, "Syncing", #97).
+ * it is saved (docs/json-data.md, "Syncing", folkloreinc/laravel-folklore#97).
  */
 class JsonDataSyncTest extends JsonDataTestCase
 {
@@ -35,14 +33,13 @@ class JsonDataSyncTest extends JsonDataTestCase
         $game->data = ['image' => ['fr' => $media], 'blocks' => [$block]];
         $game->save();
 
-        $this->assertSame([$media->id], $game->medias(JsonDataCast::MEDIAS_HANDLE)->map->getKey()->all());
+        $this->assertSame([$media->id], $game->medias()->get()->modelKeys());
         $this->assertSame([$block->id], $game->blocks()->pluck('blocks.id')->all());
-        $this->assertTrue($media->fresh()?->isUsed());
 
         $game->data = ['image' => []];
         $game->save();
 
-        $this->assertSame([], $game->medias(JsonDataCast::MEDIAS_HANDLE)->map->getKey()->all());
+        $this->assertSame([], $game->medias()->get()->modelKeys());
         $this->assertSame([], $game->blocks()->pluck('blocks.id')->all());
     }
 
@@ -83,7 +80,7 @@ class JsonDataSyncTest extends JsonDataTestCase
         $game->save();
         $this->assertSame([$first->id], $game->prizes()->pluck('prizes.id')->all());
 
-        $queries = $this->queriesOn('medias_pivot', function () use ($game, $second) {
+        $queries = $this->queriesOn('mediables', function () use ($game, $second) {
             $game->images = ['logo' => $second];
             $game->save();
         });
@@ -91,19 +88,7 @@ class JsonDataSyncTest extends JsonDataTestCase
         // `prizes` is declared in `images`, which changed; `medias` only in `data`
         $this->assertSame([$second->id], $game->prizes()->pluck('prizes.id')->all());
         $this->assertSame(0, $queries);
-        $this->assertSame([$media->id], $game->medias(JsonDataCast::MEDIAS_HANDLE)->map->getKey()->all());
-    }
-
-    public function test_the_repository_doesnt_sync_a_second_time()
-    {
-        $block = $this->makeBlock();
-        $games = $this->app->make(Games::class);
-
-        $selects = $this->queriesOn('blocks_pivot', function () use ($games, $block) {
-            $games->create(['handle' => 'quiz', 'blocks' => [$block]]);
-        }, 'select');
-
-        $this->assertSame(1, $selects);
+        $this->assertSame([$media->id], $game->medias()->get()->modelKeys());
     }
 
     public function test_the_synced_relations_are_unset_instead_of_refreshing_the_model()
@@ -118,21 +103,6 @@ class JsonDataSyncTest extends JsonDataTestCase
 
         $this->assertFalse($game->relationLoaded('blocks'));
         $this->assertSame([$block->id], $game->blocks->map->getKey()->all());
-    }
-
-    public function test_the_repository_doesnt_refresh_the_model_after_the_sync()
-    {
-        $games = $this->app->make(Games::class);
-        $game = $games->create(['handle' => 'quiz']);
-
-        DB::flushQueryLog();
-        DB::enableQueryLog();
-        $games->update($game->id(), ['blocks' => [$this->makeBlock()]]);
-        DB::disableQueryLog();
-
-        // The find of update(), and no refresh()
-        $reads = collect(DB::getQueryLog())->filter(fn (array $query) => preg_match('/^select .* from [`"]?games[`"]? /i', $query['query']) === 1);
-        $this->assertCount(1, $reads);
     }
 
     /**

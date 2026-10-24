@@ -1,6 +1,6 @@
 <?php
 
-namespace Folklore\Tests\Unit\Eloquent\Fixtures;
+namespace Folklore\JsonData\Tests\Unit\Fixtures;
 
 use Illuminate\Database\Eloquent\Model;
 

@@ -1,9 +1,11 @@
 <?php
 
-namespace Folklore\Eloquent;
+namespace Folklore\JsonData;
 
-use Folklore\Eloquent\Exceptions\InvalidJsonReference;
+use Closure;
+use Folklore\JsonData\Exceptions\InvalidJsonReference;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Collection;
 
 /**
@@ -33,6 +35,21 @@ final class JsonData
     private static array $map = [];
 
     private static bool $enforced = false;
+
+    /**
+     * @var list<Closure(Model, string, mixed, array<array-key, mixed>): (array{references?: iterable<mixed>, columns?: array<string, string>}|null)>
+     */
+    private static array $declarers = [];
+
+    /**
+     * @var (Closure(object, JsonReference|null): mixed)|null
+     */
+    private static ?Closure $unwrapper = null;
+
+    /**
+     * @var list<Closure(Model, string, Relation<Model, Model, mixed>, list<mixed>): bool>
+     */
+    private static array $syncers = [];
 
     /**
      * Maps keys to their targets. Can be called more than once: a later call adds keys.
@@ -182,7 +199,102 @@ final class JsonData
     }
 
     /**
-     * Forgets every key and turns `enforceMap()` off. For tests.
+     * Adds a callback that declares the JSON attributes of models without a schema
+     * (docs/json-data.md, "Hooks"), such as laravel-folklore's adapter of its 1.x
+     * declarations. It is given the model, the attribute, its decoded value and the
+     * model's raw attributes, and returns null when it doesn't declare the attribute, or:
+     *
+     * - `references`: the reference paths, as `path => relation`, or `path => options`
+     *   (`relation`, `key`, `using`, `lazy`, `sync`, `delete`, `skip`, `get`, `set`,
+     *   `before_set`, `callbacks`);
+     * - `columns`: the paths copied into columns, as `path => column`.
+     *
+     * The callbacks are asked in the order they were added; the first that declares the
+     * attribute wins.
+     *
+     * @param  Closure(Model, string, mixed, array<array-key, mixed>): (array{references?: iterable<mixed>, columns?: array<string, string>}|null)  $declarer
+     */
+    public static function declareUsing(Closure $declarer): void
+    {
+        self::$declarers[] = $declarer;
+    }
+
+    /**
+     * What is declared for a JSON attribute of a model: its reference paths and the
+     * columns it is copied into. Empty when nothing declares it.
+     *
+     * @param  array<array-key, mixed>  $attributes
+     * @return array{references: iterable<mixed>, columns: array<string, string>}
+     *
+     * @internal
+     */
+    public static function declarations(Model $model, string $attribute, mixed $value, array $attributes): array
+    {
+        foreach (self::$declarers as $declarer) {
+            $declared = $declarer($model, $attribute, $value, $attributes);
+            if (is_array($declared)) {
+                return [
+                    'references' => $declared['references'] ?? [],
+                    'columns' => $declared['columns'] ?? [],
+                ];
+            }
+        }
+
+        return ['references' => [], 'columns' => []];
+    }
+
+    /**
+     * Turns a value that isn't a model, such as an application's entity, into the model or
+     * the identifier it stands for, before a handler prepares it (docs/json-data.md,
+     * "Hooks"). The callback is given the value and the target of the key being prepared,
+     * if any, and returns the value unchanged when it doesn't know it. A later call
+     * replaces it.
+     *
+     * @param  (Closure(object, JsonReference|null): mixed)|null  $unwrapper
+     */
+    public static function unwrapUsing(?Closure $unwrapper): void
+    {
+        self::$unwrapper = $unwrapper;
+    }
+
+    /**
+     * The model or identifier a value stands for, through the callback of `unwrapUsing()`.
+     * Models, scalars and arrays are returned as they are.
+     */
+    public static function unwrap(mixed $value, ?JsonReference $target = null): mixed
+    {
+        if (! is_object($value) || $value instanceof Model || is_null(self::$unwrapper)) {
+            return $value;
+        }
+
+        return (self::$unwrapper)($value, $target);
+    }
+
+    /**
+     * Adds a callback that syncs the references of a relation itself, instead of the sync
+     * by kind of relation (docs/json-data.md, "Hooks"). It is given the model, the name
+     * of the relation, the relation and the keys of the referenced models, and returns
+     * true when it synced them. The callbacks are tried in the order they were added.
+     *
+     * @param  Closure(Model, string, Relation<Model, Model, mixed>, list<mixed>): bool  $syncer
+     */
+    public static function syncUsing(Closure $syncer): void
+    {
+        self::$syncers[] = $syncer;
+    }
+
+    /**
+     * @return list<Closure(Model, string, Relation<Model, Model, mixed>, list<mixed>): bool>
+     *
+     * @internal
+     */
+    public static function syncers(): array
+    {
+        return self::$syncers;
+    }
+
+    /**
+     * Forgets every key and hook, and turns `enforceMap()` off. For tests.
      *
      * @internal
      */
@@ -190,5 +302,8 @@ final class JsonData
     {
         self::$map = [];
         self::$enforced = false;
+        self::$declarers = [];
+        self::$unwrapper = null;
+        self::$syncers = [];
     }
 }

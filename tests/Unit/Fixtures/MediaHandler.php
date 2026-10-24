@@ -1,9 +1,9 @@
 <?php
 
-namespace Folklore\Tests\Unit\Eloquent\Fixtures;
+namespace Folklore\JsonData\Tests\Unit\Fixtures;
 
-use Folklore\Contracts\Eloquent\ReferenceHandler;
-use Folklore\Eloquent\ReferenceContext;
+use Folklore\JsonData\Contracts\ReferenceHandler;
+use Folklore\JsonData\ReferenceContext;
 use Illuminate\Database\Eloquent\Model;
 
 class MediaHandler implements ReferenceHandler

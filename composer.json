@@ -1,0 +1,67 @@
+{
+    "name": "folklore/laravel-json-data",
+    "description": "References to models in the JSON columns of Eloquent models, and the schema of JSON columns.",
+    "keywords": [
+        "laravel",
+        "eloquent",
+        "json",
+        "cast"
+    ],
+    "homepage": "https://github.com/folkloreinc/laravel-json-data",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Folklore",
+            "email": "info@folklore.email",
+            "homepage": "http://folkloreinc.ca"
+        },
+        {
+            "name": "David Mongeau-Petitpas",
+            "email": "dmp@folklore.email",
+            "homepage": "http://mongo.ca",
+            "role": "Developer"
+        }
+    ],
+    "require": {
+        "php": "^8.3",
+        "illuminate/console": "^12.69|^13.30",
+        "illuminate/contracts": "^12.69|^13.30",
+        "illuminate/database": "^12.69|^13.30",
+        "illuminate/support": "^12.69|^13.30"
+    },
+    "require-dev": {
+        "larastan/larastan": "^3.0",
+        "laravel/framework": "^12.69|^13.30",
+        "laravel/pint": "^1.18",
+        "orchestra/testbench": "^10.0|^11.0",
+        "phpunit/phpunit": "^11.5|^12.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Folklore\\JsonData\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Folklore\\JsonData\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit",
+        "format": "pint",
+        "lint": "pint --test",
+        "analyse": "phpstan analyse --memory-limit=2G"
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-v1.x": "1.x-dev"
+        },
+        "laravel": {
+            "providers": [
+                "Folklore\\JsonData\\JsonDataServiceProvider"
+            ]
+        }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}

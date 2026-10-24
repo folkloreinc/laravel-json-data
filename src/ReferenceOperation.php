@@ -1,6 +1,6 @@
 <?php
 
-namespace Folklore\Eloquent;
+namespace Folklore\JsonData;
 
 enum ReferenceOperation: string
 {

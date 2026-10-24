@@ -1,0 +1,199 @@
+parameters:
+	ignoreErrors:
+		-
+			message: '#^Call to function is_null\(\) with array will always evaluate to false\.$#'
+			identifier: function.impossibleType
+			count: 2
+			path: src/JsonDataCast.php
+
+		-
+			message: '#^Cannot access offset ''path'' on mixed\.$#'
+			identifier: offsetAccess.nonOffsetAccessible
+			count: 2
+			path: src/JsonDataCast.php
+
+		-
+			message: '#^Cannot access offset ''relation'' on mixed\.$#'
+			identifier: offsetAccess.nonOffsetAccessible
+			count: 1
+			path: src/JsonDataCast.php
+
+		-
+			message: '#^Cannot call method delete\(\) on mixed\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: src/JsonDataCast.php
+
+		-
+			message: '#^Cannot call method find\(\) on mixed\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: src/JsonDataCast.php
+
+		-
+			message: '#^Cannot call method get\(\) on mixed\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: src/JsonDataCast.php
+
+		-
+			message: '#^Cannot call method push\(\) on mixed\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: src/JsonDataCast.php
+
+		-
+			message: '#^Cannot call method put\(\) on mixed\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: src/JsonDataCast.php
+
+		-
+			message: '#^Cannot call method search\(\) on mixed\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: src/JsonDataCast.php
+
+		-
+			message: '#^Cannot call method whereNotIn\(\) on mixed\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: src/JsonDataCast.php
+
+		-
+			message: '#^Class Folklore\\JsonData\\JsonDataCast implements generic interface Illuminate\\Contracts\\Database\\Eloquent\\CastsAttributes but does not specify its types\: TGet, TSet$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/JsonDataCast.php
+
+		-
+			message: '#^Method Folklore\\JsonData\\JsonDataCast\:\:get\(\) has parameter \$attributes with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/JsonDataCast.php
+
+		-
+			message: '#^Method Folklore\\JsonData\\JsonDataCast\:\:get\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/JsonDataCast.php
+
+		-
+			message: '#^Method Folklore\\JsonData\\JsonDataCast\:\:get\(\) should return array but returns mixed\.$#'
+			identifier: return.type
+			count: 1
+			path: src/JsonDataCast.php
+
+		-
+			message: '#^Method Folklore\\JsonData\\JsonDataCast\:\:getRelationAndIdFromPath\(\) has parameter \$path with no type specified\.$#'
+			identifier: missingType.parameter
+			count: 1
+			path: src/JsonDataCast.php
+
+		-
+			message: '#^Method Folklore\\JsonData\\JsonDataCast\:\:getRelationAndIdFromPath\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/JsonDataCast.php
+
+		-
+			message: '#^Method Folklore\\JsonData\\JsonDataCast\:\:normalizeJsonDataRelations\(\) has parameter \$relations with generic class Illuminate\\Support\\Collection but does not specify its types\: TKey, TValue$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/JsonDataCast.php
+
+		-
+			message: '#^Method Folklore\\JsonData\\JsonDataCast\:\:normalizeJsonDataRelations\(\) has parameter \$relations with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/JsonDataCast.php
+
+		-
+			message: '#^Method Folklore\\JsonData\\JsonDataCast\:\:normalizeJsonDataRelations\(\) has parameter \$relations with no value type specified in iterable type array\|Illuminate\\Support\\Collection\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/JsonDataCast.php
+
+		-
+			message: '#^Method Folklore\\JsonData\\JsonDataCast\:\:normalizeJsonDataRelations\(\) return type with generic class Illuminate\\Support\\Collection does not specify its types\: TKey, TValue$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/JsonDataCast.php
+
+		-
+			message: '#^Method Folklore\\JsonData\\JsonDataCast\:\:normalizeJsonDataRelations\(\) should return Illuminate\\Support\\Collection but returns mixed\.$#'
+			identifier: return.type
+			count: 1
+			path: src/JsonDataCast.php
+
+		-
+			message: '#^Method Folklore\\JsonData\\JsonDataCast\:\:saveForeignKey\(\) has parameter \$relation with generic class Illuminate\\Database\\Eloquent\\Relations\\BelongsTo but does not specify its types\: TRelatedModel, TDeclaringModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/JsonDataCast.php
+
+		-
+			message: '#^Method Folklore\\JsonData\\JsonDataCast\:\:set\(\) has parameter \$attributes with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/JsonDataCast.php
+
+		-
+			message: '#^Method Folklore\\JsonData\\JsonDataCast\:\:set\(\) has parameter \$value with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/JsonDataCast.php
+
+		-
+			message: '#^Method Folklore\\JsonData\\JsonDataCast\:\:syncRelations\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: src/JsonDataCast.php
+
+		-
+			message: '#^Method Folklore\\JsonData\\JsonDataCast\:\:syncRelations\(\) has parameter \$model with no type specified\.$#'
+			identifier: missingType.parameter
+			count: 1
+			path: src/JsonDataCast.php
+
+		-
+			message: '#^Parameter \#1 \$array of static method Illuminate\\Support\\Arr\:\:except\(\) expects array, mixed given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/JsonDataCast.php
+
+		-
+			message: '#^Parameter \#1 \$json of function json_decode expects string, mixed given\.$#'
+			identifier: argument.type
+			count: 2
+			path: src/JsonDataCast.php
+
+		-
+			message: '#^Parameter \#1 \$model of method Illuminate\\Database\\Eloquent\\Relations\\BelongsTo\<Illuminate\\Database\\Eloquent\\Model,Illuminate\\Database\\Eloquent\\Model\>\:\:associate\(\) expects Illuminate\\Database\\Eloquent\\Model\|int\|string\|null, mixed given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/JsonDataCast.php
+
+		-
+			message: '#^Parameter \#1 \$value of function collect expects Illuminate\\Contracts\\Support\\Arrayable\<\(int\|string\), mixed\>\|iterable\<\(int\|string\), mixed\>\|null, mixed given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/JsonDataCast.php
+
+		-
+			message: '#^Trying to invoke mixed but it''s not a callable\.$#'
+			identifier: callable.nonCallable
+			count: 1
+			path: src/JsonDataCast.php
+
+		-
+			message: '#^Unable to resolve the template type TKey in call to function collect$#'
+			identifier: argument.templateType
+			count: 1
+			path: src/JsonDataCast.php
+
+		-
+			message: '#^Unable to resolve the template type TValue in call to function collect$#'
+			identifier: argument.templateType
+			count: 1
+			path: src/JsonDataCast.php

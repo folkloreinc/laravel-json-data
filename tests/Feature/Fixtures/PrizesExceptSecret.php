@@ -1,9 +1,9 @@
 <?php
 
-namespace Folklore\Tests\Feature\Eloquent\Fixtures;
+namespace Folklore\JsonData\Tests\Feature\Fixtures;
 
-use Folklore\Eloquent\ModelReferences;
-use Folklore\Eloquent\ReferenceContext;
+use Folklore\JsonData\ModelReferences;
+use Folklore\JsonData\ReferenceContext;
 use Illuminate\Database\Eloquent\Model;
 
 /**

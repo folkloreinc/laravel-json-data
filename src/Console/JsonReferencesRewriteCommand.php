@@ -1,14 +1,12 @@
 <?php
 
-namespace Folklore\Console;
+namespace Folklore\JsonData\Console;
 
-use Folklore\Contracts\Eloquent\HasJsonDataRelations;
-use Folklore\Eloquent\JsonData;
-use Folklore\Eloquent\JsonDataCast;
-use Folklore\Eloquent\JsonReference;
-use Folklore\Eloquent\JsonReferenceEntry;
-use Folklore\Models\Block;
-use Folklore\Models\Page;
+use Closure;
+use Folklore\JsonData\JsonData;
+use Folklore\JsonData\JsonDataCast;
+use Folklore\JsonData\JsonReference;
+use Folklore\JsonData\JsonReferenceEntry;
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
@@ -30,7 +28,7 @@ class JsonReferencesRewriteCommand extends Command
     protected $signature = 'folklore:json-references:rewrite
         {--from= : The key of the references to rewrite}
         {--to= : The key to write instead, mapped to the same model}
-        {--model=* : A model to rewrite; by default, the models of app/Models, and the pages module\'s, that cast a JSON attribute with JsonDataCast}
+        {--model=* : A model to rewrite; by default, the models of app/Models, and those added with discoverUsing(), that cast a JSON attribute with JsonDataCast}
         {--chunk=500 : How many rows to read at a time}
         {--dry-run : Report what would change, without writing}';
 
@@ -40,6 +38,32 @@ class JsonReferencesRewriteCommand extends Command
      * @var string
      */
     protected $description = 'Rewrite the JSON references of one key to another';
+
+    /**
+     * @var list<Closure(): iterable<class-string>>
+     */
+    protected static array $discoverers = [];
+
+    /**
+     * Adds models to rewrite by default, besides those of app/Models, such as the models
+     * of a package. The callback runs when the command does, and returns model classes.
+     *
+     * @param  Closure(): iterable<class-string>  $models
+     */
+    public static function discoverUsing(Closure $models): void
+    {
+        static::$discoverers[] = $models;
+    }
+
+    /**
+     * Forgets the callbacks of discoverUsing(). For tests.
+     *
+     * @internal
+     */
+    public static function flushDiscoverers(): void
+    {
+        static::$discoverers = [];
+    }
 
     public function handle(): int
     {
@@ -175,8 +199,8 @@ class JsonReferencesRewriteCommand extends Command
     }
 
     /**
-     * The models to rewrite: `--model`, or the models of app/Models and of the pages
-     * module that cast a JSON attribute with JsonDataCast.
+     * The models to rewrite: `--model`, or the models of app/Models and of discoverUsing()
+     * that cast a JSON attribute with JsonDataCast.
      *
      * @return list<class-string<Model>>
      */
@@ -186,10 +210,10 @@ class JsonReferencesRewriteCommand extends Command
         $given = array_values(array_filter(is_array($option) ? $option : [], 'is_string'));
         $models = [];
         foreach (count($given) > 0 ? $given : $this->discoveredModels() as $class) {
-            if (is_subclass_of($class, Model::class) && is_subclass_of($class, HasJsonDataRelations::class) && $this->castsJsonData($class)) {
+            if (is_subclass_of($class, Model::class) && $this->castsJsonData($class)) {
                 $models[] = $class;
             } elseif (count($given) > 0) {
-                $this->warn("[{$class}] is not a model with JSON references: skipped.");
+                $this->warn("[{$class}] is not a model with a JSON attribute cast with JsonDataCast: skipped.");
             }
         }
 
@@ -226,8 +250,10 @@ class JsonReferencesRewriteCommand extends Command
                 }
             }
         }
-        if ((bool) config('site.modules.pages')) {
-            array_push($classes, Page::class, Block::class);
+        foreach (static::$discoverers as $discoverer) {
+            foreach ($discoverer() as $class) {
+                $classes[] = $class;
+            }
         }
 
         return array_values(array_filter($classes, 'class_exists'));

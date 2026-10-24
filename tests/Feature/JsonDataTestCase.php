@@ -1,12 +1,12 @@
 <?php
 
-namespace Folklore\Tests\Feature\Eloquent;
+namespace Folklore\JsonData\Tests\Feature;
 
-use Cviebrock\EloquentSluggable\ServiceProvider as SluggableServiceProvider;
-use Folklore\Eloquent\JsonDataCast;
-use Folklore\Models\Block;
-use Folklore\Models\Media;
-use Folklore\Tests\TestCase;
+use Folklore\JsonData\JsonData;
+use Folklore\JsonData\Tests\Feature\Fixtures\Block;
+use Folklore\JsonData\Tests\Feature\Fixtures\Game;
+use Folklore\JsonData\Tests\Feature\Fixtures\Media;
+use Folklore\JsonData\Tests\TestCase;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 
@@ -15,32 +15,20 @@ use Illuminate\Support\Facades\DB;
  */
 abstract class JsonDataTestCase extends TestCase
 {
-    protected function getPackageProviders($app)
-    {
-        return array_merge(parent::getPackageProviders($app), [SluggableServiceProvider::class]);
-    }
-
     protected function getEnvironmentSetUp($app)
     {
         parent::getEnvironmentSetUp($app);
 
         $app['config']->set('locale.locales', ['fr', 'en']);
-        $app['config']->set('app.fallback_locale', 'fr');
     }
 
     protected function setUp(): void
     {
         parent::setUp();
 
-        $this->artisan('migrate', ['--database' => 'testbench']);
-        $this->migrateMediatheque();
-        foreach (['000000_create_pages_table', '000001_create_blocks_table', '000002_create_blocks_pivot'] as $migration) {
-            $this->artisan('migrate', [
-                '--database' => 'testbench',
-                '--path' => __DIR__.'/../../../src/migrations/2021_01_01_'.$migration.'.php',
-                '--realpath' => true,
-            ]);
-        }
+        // As laravel-folklore's medias module on a site upgraded from 1.x: `medias://12`
+        JsonData::map(['medias' => Media::class]);
+
         $this->artisan('migrate', [
             '--database' => 'testbench',
             '--path' => __DIR__.'/Fixtures/migrations',
@@ -50,26 +38,14 @@ abstract class JsonDataTestCase extends TestCase
 
     protected function tearDown(): void
     {
-        $filesPath = public_path('files');
-        if (app('files')->exists($filesPath)) {
-            app('files')->deleteDirectory($filesPath);
-        }
-        JsonDataCast::flushMacros();
+        Game::$imageOptions = [];
 
         parent::tearDown();
     }
 
     protected function makeMedia(): Media
     {
-        $media = new Media;
-        $media->forceFill([
-            'type' => 'image',
-            'name' => 'folklore',
-            'status' => 'ready',
-            'visibility' => 'public',
-        ])->save();
-
-        return $media;
+        return Media::create(['name' => 'folklore']);
     }
 
     protected function makeBlock(string $type = 'text'): Block
@@ -79,6 +55,8 @@ abstract class JsonDataTestCase extends TestCase
 
     /**
      * The JSON column as stored, without the cast.
+     *
+     * @return array<array-key, mixed>|null
      */
     protected function rawData(Model $model, string $key = 'data'): ?array
     {
