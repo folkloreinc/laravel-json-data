@@ -1,6 +1,6 @@
 <?php
 
-namespace Folklore\Eloquent;
+namespace Folklore\JsonData;
 
 use Illuminate\Database\Eloquent\Model;
 

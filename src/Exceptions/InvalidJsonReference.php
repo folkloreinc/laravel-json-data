@@ -1,6 +1,6 @@
 <?php
 
-namespace Folklore\Eloquent\Exceptions;
+namespace Folklore\JsonData\Exceptions;
 
 use InvalidArgumentException;
 

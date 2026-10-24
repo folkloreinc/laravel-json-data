@@ -1,6 +1,6 @@
 <?php
 
-namespace Folklore\Support;
+namespace Folklore\JsonData\Support;
 
 use Closure;
 use Illuminate\Contracts\Support\Arrayable;
