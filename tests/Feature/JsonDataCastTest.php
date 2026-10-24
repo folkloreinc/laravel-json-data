@@ -1,18 +1,19 @@
 <?php
 
-namespace Folklore\Tests\Feature\Eloquent;
+namespace Folklore\JsonData\Tests\Feature;
 
-use Folklore\Eloquent\JsonDataCast;
-use Folklore\Tests\Feature\Eloquent\Fixtures\FixtureEntity;
-use Folklore\Tests\Feature\Eloquent\Fixtures\Game;
-use Folklore\Tests\Feature\Eloquent\Fixtures\Games;
-use Folklore\Tests\Feature\Eloquent\Fixtures\Prize;
+use Folklore\JsonData\JsonData;
+use Folklore\JsonData\JsonDataCast;
+use Folklore\JsonData\Tests\Feature\Fixtures\Game;
+use Folklore\JsonData\Tests\Feature\Fixtures\Prize;
+use Folklore\JsonData\Tests\Feature\Fixtures\Wrapper;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Characterization tests: they pin how JsonDataCast behaves on 1.1, with cases
- * taken from the contests platform, before 2.0 reworks it (#56, #59).
+ * Characterization tests: they pin how JsonDataCast behaved in laravel-folklore 1.1, with
+ * cases taken from the contests platform, and what laravel-folklore 2 changed on purpose
+ * (folkloreinc/laravel-folklore#56, #59).
  */
 class JsonDataCastTest extends JsonDataTestCase
 {
@@ -47,16 +48,17 @@ class JsonDataCastTest extends JsonDataTestCase
         $this->assertSame('A', $data['questions'][0]['choices'][0]['label']);
     }
 
-    public function test_it_accepts_an_id_an_array_or_an_entity_when_writing()
+    public function test_it_accepts_an_id_an_array_or_an_unwrapped_value_when_writing()
     {
         $first = $this->makeMedia();
         $second = $this->makeMedia();
         $third = $this->makeMedia();
+        JsonData::unwrapUsing(fn (object $value) => $value instanceof Wrapper ? $value->model : $value);
 
         $game = new Game;
         $game->data = [
             'image' => ['fr' => $first->id, 'en' => ['id' => $second->id, 'name' => 'ignored']],
-            'questions' => [['choices' => [['image' => new FixtureEntity($third)]]]],
+            'questions' => [['choices' => [['image' => new Wrapper($third)]]]],
         ];
         $game->save();
 
@@ -106,8 +108,7 @@ class JsonDataCastTest extends JsonDataTestCase
     }
 
     /**
-     * The medias module maps the `medias` key: a media reference resolves by its id,
-     * attached or not, and MediaReferences::allowUsing() scopes it (decisions/0008).
+     * A mapped key resolves by its column, attached or not (docs/decisions/0016).
      */
     public function test_a_media_reference_resolves_by_its_key_before_it_is_synced()
     {
@@ -136,24 +137,41 @@ class JsonDataCastTest extends JsonDataTestCase
         $this->assertSame(1, Game::find($game->id)->data['prizes'][0]['quantity']);
     }
 
-    public function test_a_macro_of_the_model_takes_precedence_over_a_global_one()
+    public function test_a_get_callback_of_a_declaration_reads_the_value()
     {
         $media = $this->makeMedia();
         $game = new Game;
         $game->data = ['image' => ['fr' => $media]];
         $game->save();
 
-        JsonDataCast::macro('medias:get', fn ($item) => 'global '.$item);
-        $this->assertSame('global medias://'.$media->id, Game::find($game->id)->data['image']['fr']);
+        Game::$imageOptions = ['get' => fn ($item) => 'read '.$item];
 
-        JsonDataCast::macro(Game::class.':medias:get', fn ($item) => 'game '.$item);
-        $this->assertSame('game medias://'.$media->id, Game::find($game->id)->data['image']['fr']);
+        $this->assertSame('read medias://'.$media->id, Game::find($game->id)->data['image']['fr']);
     }
 
-    public function test_a_before_set_macro_prepares_the_value_before_it_is_serialized()
+    /**
+     * laravel-folklore passes its 1.x macros through the `callbacks` option.
+     */
+    public function test_the_callbacks_option_resolves_a_callback_by_its_relation()
     {
         $media = $this->makeMedia();
-        JsonDataCast::macro('medias:before_set', fn ($item) => $item === 'folklore.png' ? $media : $item);
+        $game = new Game;
+        $game->data = ['image' => ['fr' => $media]];
+        $game->save();
+
+        Game::$imageOptions = ['callbacks' => fn (string $name, string $relationName) => $name === 'get' && $relationName === 'medias'
+            ? fn ($item) => 'resolved '.$item
+            : null];
+        $this->assertSame('resolved medias://'.$media->id, Game::find($game->id)->data['image']['fr']);
+
+        Game::$imageOptions['get'] = fn ($item) => 'given '.$item;
+        $this->assertSame('given medias://'.$media->id, Game::find($game->id)->data['image']['fr']);
+    }
+
+    public function test_a_before_set_callback_prepares_the_value_before_it_is_serialized()
+    {
+        $media = $this->makeMedia();
+        Game::$imageOptions = ['before_set' => fn ($item) => $item === 'folklore.png' ? $media : $item];
 
         $game = new Game;
         $game->data = ['image' => ['fr' => 'folklore.png']];
@@ -163,29 +181,30 @@ class JsonDataCastTest extends JsonDataTestCase
     }
 
     /**
-     * The media of JSON data are synced under their own handle of the
-     * mediatheque's pivot: a media attached otherwise stays (#56).
+     * laravel-folklore syncs the media into laravel-mediatheque's usage graph through
+     * JsonData::syncUsing(): a callback that syncs a relation replaces the cast's sync.
      */
-    public function test_sync_keeps_the_media_attached_otherwise()
+    public function test_a_sync_callback_syncs_a_relation_instead_of_the_cast()
     {
-        $cover = $this->makeMedia();
         $image = $this->makeMedia();
+        $block = $this->makeBlock();
+        $synced = [];
+        JsonData::syncUsing(function ($model, string $relationName, $relation, array $ids) use (&$synced) {
+            if ($relationName !== 'medias') {
+                return false;
+            }
+            $synced[] = $ids;
+
+            return true;
+        });
 
         $game = new Game;
-        $game->data = ['image' => ['fr' => $image]];
+        $game->data = ['image' => ['fr' => $image], 'blocks' => [$block]];
         $game->save();
-        $game->attachMedia($cover, 'cover');
-        JsonDataCast::syncRelations($game);
 
-        $this->assertTrue($game->fresh()?->media('cover')?->is($cover));
-        $this->assertSame([$image->id], $game->fresh()?->medias(JsonDataCast::MEDIAS_HANDLE)->map->getKey()->all());
-
-        $game->data = ['image' => []];
-        $game->save();
-        JsonDataCast::syncRelations($game);
-
-        $this->assertTrue($game->fresh()?->media('cover')?->is($cover));
-        $this->assertSame([], $game->fresh()?->medias(JsonDataCast::MEDIAS_HANDLE)->map->getKey()->all());
+        $this->assertEquals([[$image->id]], $synced);
+        $this->assertSame(0, $game->medias()->count());
+        $this->assertSame([$block->id], $game->blocks()->pluck('blocks.id')->all());
     }
 
     public function test_sync_attaches_and_detaches_the_referenced_models()
@@ -270,19 +289,18 @@ class JsonDataCastTest extends JsonDataTestCase
         $this->assertNull($game->fresh()->title_en);
     }
 
-    public function test_the_repository_writes_the_json_data_extracts_columns_and_syncs()
+    public function test_saving_writes_the_json_data_extracts_columns_and_syncs()
     {
         $image = $this->makeMedia();
         $block = $this->makeBlock();
-        $games = $this->app->make(Games::class);
 
-        $entity = $games->create([
-            'handle' => 'quiz',
+        $game = new Game(['handle' => 'quiz']);
+        $game->data = [
             'title' => ['fr' => 'Le quiz'],
             'image' => ['fr' => $image],
             'blocks' => [$block],
-        ]);
-        $game = $entity->getModel();
+        ];
+        $game->save();
 
         $this->assertSame('quiz', $game->handle);
         $this->assertSame('Le quiz', $game->title_fr);
@@ -292,23 +310,6 @@ class JsonDataCastTest extends JsonDataTestCase
         );
         $this->assertTrue($game->data['image']['fr']->is($image));
         $this->assertSame([$block->id], $game->blocks()->pluck('blocks.id')->all());
-    }
-
-    public function test_a_partial_update_through_the_repository_keeps_the_other_keys()
-    {
-        $image = $this->makeMedia();
-        $games = $this->app->make(Games::class);
-        $game = $games->create([
-            'handle' => 'quiz',
-            'title' => ['fr' => 'Le quiz', 'en' => 'The quiz'],
-            'image' => ['fr' => $image],
-        ]);
-
-        $games->update($game->id(), ['title' => ['fr' => 'Le nouveau quiz']]);
-
-        $raw = $this->rawData($game->getModel());
-        $this->assertSame(['fr' => 'Le nouveau quiz'], $raw['title']);
-        $this->assertSame(['fr' => 'medias://'.$image->id], $raw['image']);
     }
 
     public function test_the_fixtures_store_the_json_data_as_jsonb_on_postgresql()

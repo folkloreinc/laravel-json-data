@@ -8,6 +8,38 @@ return new class extends Migration
 {
     public function up(): void
     {
+        Schema::create('medias', function (Blueprint $table) {
+            $table->id();
+            $table->string('name')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('mediables', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('media_id')->index();
+            $table->morphs('mediable');
+        });
+
+        Schema::create('blocks', function (Blueprint $table) {
+            $table->id();
+            $table->string('type')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('blocks_pivot', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('block_id')->index();
+            $table->morphs('blockable');
+        });
+
+        Schema::create('pages', function (Blueprint $table) {
+            $table->id();
+            $table->string('handle')->nullable();
+            $table->foreignId('parent_id')->nullable()->index();
+            $table->jsonb('data')->nullable();
+            $table->timestamps();
+        });
+
         Schema::create('contests', function (Blueprint $table) {
             $table->id();
             $table->jsonb('data')->nullable();
@@ -45,5 +77,10 @@ return new class extends Migration
         Schema::dropIfExists('prizes');
         Schema::dropIfExists('games');
         Schema::dropIfExists('contests');
+        Schema::dropIfExists('pages');
+        Schema::dropIfExists('blocks_pivot');
+        Schema::dropIfExists('blocks');
+        Schema::dropIfExists('mediables');
+        Schema::dropIfExists('medias');
     }
 };

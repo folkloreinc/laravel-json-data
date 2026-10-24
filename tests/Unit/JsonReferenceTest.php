@@ -1,13 +1,13 @@
 <?php
 
-namespace Folklore\Tests\Unit\Eloquent;
+namespace Folklore\JsonData\Tests\Unit;
 
-use Folklore\Eloquent\Exceptions\InvalidJsonReference;
-use Folklore\Eloquent\JsonReference;
-use Folklore\Tests\Unit\Eloquent\Fixtures\ApplicationMedia;
-use Folklore\Tests\Unit\Eloquent\Fixtures\MediaHandler;
-use Folklore\Tests\Unit\Eloquent\Fixtures\ReferencedMedia;
-use Folklore\Tests\Unit\Eloquent\Fixtures\ReferencedPrize;
+use Folklore\JsonData\Exceptions\InvalidJsonReference;
+use Folklore\JsonData\JsonReference;
+use Folklore\JsonData\Tests\Unit\Fixtures\ApplicationMedia;
+use Folklore\JsonData\Tests\Unit\Fixtures\MediaHandler;
+use Folklore\JsonData\Tests\Unit\Fixtures\ReferencedMedia;
+use Folklore\JsonData\Tests\Unit\Fixtures\ReferencedPrize;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use stdClass;

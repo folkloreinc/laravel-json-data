@@ -1,12 +1,11 @@
 <?php
 
-namespace Folklore\Tests\Feature\Eloquent\Fixtures;
+namespace Folklore\JsonData\Tests\Feature\Fixtures;
 
-use Folklore\Contracts\Entities\ToEntity;
-use Folklore\Eloquent\JsonDataCast;
+use Folklore\JsonData\JsonDataCast;
 use Illuminate\Database\Eloquent\Model;
 
-class Prize extends Model implements ToEntity
+class Prize extends Model
 {
     protected $table = 'prizes';
 
@@ -15,9 +14,4 @@ class Prize extends Model implements ToEntity
     protected $casts = [
         'data' => JsonDataCast::class,
     ];
-
-    public function toEntity(): FixtureEntity
-    {
-        return new FixtureEntity($this);
-    }
 }

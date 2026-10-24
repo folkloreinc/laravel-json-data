@@ -1,11 +1,11 @@
 <?php
 
-namespace Folklore\Tests\Feature\Eloquent;
+namespace Folklore\JsonData\Tests\Feature;
 
-use Folklore\Eloquent\JsonData;
-use Folklore\Tests\Feature\Eloquent\Fixtures\Game;
-use Folklore\Tests\Feature\Eloquent\Fixtures\Prize;
-use Folklore\Tests\Feature\Eloquent\Fixtures\RegistryGame;
+use Folklore\JsonData\JsonData;
+use Folklore\JsonData\Tests\Feature\Fixtures\Game;
+use Folklore\JsonData\Tests\Feature\Fixtures\Prize;
+use Folklore\JsonData\Tests\Feature\Fixtures\RegistryGame;
 use InvalidArgumentException;
 
 /**

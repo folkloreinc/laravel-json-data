@@ -1,17 +1,16 @@
 <?php
 
-namespace Folklore\Tests\Feature\Eloquent\Fixtures;
+namespace Folklore\JsonData\Tests\Feature\Fixtures;
 
-use Folklore\Contracts\Eloquent\HasJsonDataRelations;
-use Folklore\Contracts\Entities\ToEntity;
-use Folklore\Eloquent\JsonDataCast;
+use Folklore\JsonData\JsonDataCast;
+use Folklore\JsonData\Tests\DeclaresJsonData;
 use Illuminate\Database\Eloquent\Model;
 
 /**
  * A contest that references some of its prizes from its JSON data, through a
  * HasMany, as the contests platform references its pages from its menus.
  */
-class Contest extends Model implements HasJsonDataRelations, ToEntity
+class Contest extends Model implements DeclaresJsonData
 {
     protected $table = 'contests';
 
@@ -19,20 +18,20 @@ class Contest extends Model implements HasJsonDataRelations, ToEntity
         'data' => JsonDataCast::class,
     ];
 
-    public function getJsonDataRelations($key, $value, $attributes = [])
+    public function jsonDataReferences(string $attribute, mixed $value, array $attributes): array
     {
         return [
             'featured.*' => 'prizes',
         ];
     }
 
+    public function jsonDataColumns(string $attribute, mixed $value, array $attributes): array
+    {
+        return [];
+    }
+
     public function prizes()
     {
         return $this->hasMany(Prize::class);
-    }
-
-    public function toEntity(): FixtureEntity
-    {
-        return new FixtureEntity($this);
     }
 }

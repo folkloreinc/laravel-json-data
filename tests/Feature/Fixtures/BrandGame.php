@@ -1,8 +1,8 @@
 <?php
 
-namespace Folklore\Tests\Feature\Eloquent\Fixtures;
+namespace Folklore\JsonData\Tests\Feature\Fixtures;
 
-use Folklore\Eloquent\JsonDataCast;
+use Folklore\JsonData\JsonDataCast;
 
 /**
  * A game with a second JSON attribute, `images`, as a brand has its named images.
@@ -14,10 +14,10 @@ class BrandGame extends RegistryGame
         'images' => JsonDataCast::class,
     ];
 
-    public function getJsonDataRelations($key, $value, $attributes = [])
+    public function jsonDataReferences(string $attribute, mixed $value, array $attributes): array
     {
-        return $key === 'images'
+        return $attribute === 'images'
             ? ['logo' => 'prizes', 'favicon' => 'prizes', 'gallery.*' => 'prizes']
-            : parent::getJsonDataRelations($key, $value, $attributes);
+            : parent::jsonDataReferences($attribute, $value, $attributes);
     }
 }
