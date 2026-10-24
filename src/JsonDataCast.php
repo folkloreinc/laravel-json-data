@@ -5,7 +5,7 @@ namespace Folklore\JsonData;
 use Folklore\JsonData\Contracts\ReferenceHandler;
 use Folklore\JsonData\Exceptions\InvalidJsonReference;
 use Folklore\JsonData\Exceptions\ReferenceNotAllowed;
-use Folklore\JsonData\Support\Data;
+use Folklore\JsonData\Support\Paths;
 use Illuminate\Container\Container;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
 use Illuminate\Contracts\Events\Dispatcher;
@@ -83,7 +83,7 @@ class JsonDataCast implements CastsAttributes
 
             foreach ($relations as $relation) {
                 foreach (self::paths($relation) as $pattern) {
-                    $value = Data::reducePaths([$pattern], $value, function (mixed $newValue, int|string $path, mixed $item) use (
+                    $value = Paths::reduce([$pattern], $value, function (mixed $newValue, int|string $path, mixed $item) use (
                         $model,
                         $relation,
                         $pattern,
@@ -165,7 +165,7 @@ class JsonDataCast implements CastsAttributes
             foreach ($relations as $relation) {
                 foreach (self::paths($relation) as $pattern) {
                     $recursive = self::isRecursive($pattern);
-                    $value = Data::reducePaths([$pattern], $value, function (
+                    $value = Paths::reduce([$pattern], $value, function (
                         mixed $newValue,
                         int|string $path,
                         mixed $item
@@ -450,11 +450,8 @@ class JsonDataCast implements CastsAttributes
             $relationName = self::relationName($model, $relation, null, null);
             $related = self::relatedClass($model, $relationName);
             foreach (self::paths($relation) as $pattern) {
-                foreach (Data::matchingPaths([$pattern], $value) as $path) {
-                    if (! is_string($path) && ! is_int($path)) {
-                        continue;
-                    }
-                    $item = data_get($value, (string) $path);
+                foreach (Paths::matching([$pattern], $value) as $path) {
+                    $item = data_get($value, $path);
                     $entry = is_string($item) ? JsonData::parse($item) : null;
                     if (is_null($entry)) {
                         continue;
@@ -625,7 +622,7 @@ class JsonDataCast implements CastsAttributes
         $keys = [];
         $byKey = [];
         foreach ($paths as $pattern) {
-            foreach (Data::matchingPaths([$pattern], $data) as $path) {
+            foreach (Paths::matching([$pattern], $data) as $path) {
                 $item = data_get($data, $path);
                 $entry = is_string($item) ? JsonData::parse($item) : null;
                 if (is_null($entry)) {
@@ -812,10 +809,10 @@ class JsonDataCast implements CastsAttributes
         foreach (self::relations($model, $key, $storedValue, $model->getAttributes()) as $relation) {
             array_push($paths, ...self::paths($relation));
         }
-        foreach (Data::matchingPaths($paths, $storedValue) as $path) {
+        foreach (Paths::matching($paths, $storedValue) as $path) {
             $reference = data_get($storedValue, $path);
             if (! is_null(self::getRelationAndIdFromPath($reference)) && is_null(data_get($value, $path))) {
-                data_set($value, $path, $reference);
+                data_set($value, (string) $path, $reference);
             }
         }
 
@@ -852,7 +849,7 @@ class JsonDataCast implements CastsAttributes
             foreach ($relations as $relation) {
                 $relationName = self::relationName($model, $relation, null, null);
                 foreach (self::paths($relation) as $pattern) {
-                    foreach (Data::matchingPaths([$pattern], $value) as $path) {
+                    foreach (Paths::matching([$pattern], $value) as $path) {
                         $item = data_get($value, $path);
                         $entry = is_string($item) ? JsonData::parse($item) : null;
                         if (is_null($entry) || ! $entry->isMapped()) {

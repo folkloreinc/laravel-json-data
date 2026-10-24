@@ -24,6 +24,10 @@ The JSON data of `folklore/laravel-folklore` 2.0.0-alpha.3, in its own package (
 - The `callbacks` option of a declaration, a resolver of its `get`, `set` and `before_set` callbacks by relation.
 - `JsonDataServiceProvider`, discovered by Laravel, registers `folklore:json-references:rewrite`.
 
+### Fixed
+
+- The paths of the declarations kept the integer keys of an object at the top level of a column: `{"12": {…}}` matched `*` as `0`, since 1.x merged the paths with `array_merge()`.
+
 ### Deprecated
 
 - `JsonDataCast::MEDIAS_HANDLE`, kept for the code that read it in laravel-folklore. Removed in 2.0.
