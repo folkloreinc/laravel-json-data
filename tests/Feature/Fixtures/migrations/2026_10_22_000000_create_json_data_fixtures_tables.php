@@ -63,6 +63,17 @@ return new class extends Migration
             $table->timestamps();
         });
 
+        Schema::create('offers', function (Blueprint $table) {
+            $table->id();
+            $table->string('handle')->nullable();
+            $table->string('title_fr')->nullable();
+            $table->string('title_en')->nullable();
+            $table->string('name_sort')->nullable();
+            $table->jsonb('data')->nullable();
+            $table->jsonb('meta')->nullable();
+            $table->timestamps();
+        });
+
         Schema::create('prizes_pivot', function (Blueprint $table) {
             $table->id();
             $table->foreignId('prize_id')->index();
@@ -74,6 +85,7 @@ return new class extends Migration
     public function down(): void
     {
         Schema::dropIfExists('prizes_pivot');
+        Schema::dropIfExists('offers');
         Schema::dropIfExists('prizes');
         Schema::dropIfExists('games');
         Schema::dropIfExists('contests');

@@ -6,6 +6,18 @@ The package is released in pre-releases, tagged `v1.0.0-alpha.N`, then `beta.N` 
 
 ## [Unreleased]
 
+The schema of JSON columns, first slice ([laravel-folklore's decision 0020](https://github.com/folkloreinc/laravel-folklore/pull/106), [#7](https://github.com/folkloreinc/laravel-json-data/issues/7)).
+
+### Added
+
+- `HasJsonDataSchema`: a model declares the schema of a JSON attribute with `jsonDataSchema(string $attribute): ?ObjectType`, on the instance, memoized per instance and attribute. `JsonData::schema()` returns it.
+- The fluent factory `Folklore\JsonData\Schema\Json`, macroable, and its nodes: `string()`, `integer()`, `number()`, `boolean()`, `date()`, `datetime()`, `enum()`, `object()` with `additional()`, `list()`, `map()`, `any()`, `reference()` with `relation()` and `using()`, and `document()` with `references()`. Every node has `required()`, `nullable()`, `default()` and `input()`; scalar nodes have `translatable()` and `extract()`.
+- A schema compiles into the cast's declarations, its reference paths and extracted columns, before the declarations hook is asked.
+- `JsonData::fill(Model $model, array $input)`: a flat input into the JSON attributes that have a schema. Partial updates keep the paths they don't give, `null` clears a path, unresolved references and pending values are kept, `input()` names are read, and a string given to a translatable node goes into the default locale. Defaults are written for the missing paths.
+- `InvalidJsonData`: an input key that is neither fillable nor in a schema is refused when its object is `additional(false)`, which is the default under `JsonData::enforceMap()`. So is a locale that isn't configured.
+- A reference path with a key and no relation (`Json::reference()` without `relation()`, or `'key'` without `'relation'` in a declaration) is resolved, checked, loaded in batches, listed with a `null` relation and rewritten, but not synced ([#4](https://github.com/folkloreinc/laravel-json-data/issues/4)).
+- The locales of translatable nodes come from `LocaleResolver`, bound in the container to `ConfigLocaleResolver`, which reads the new `json-data.locales` and `json-data.default_locale` config, falling back to `app.locale`. The config is published with the `json-data-config` tag.
+
 ## [1.0.0-alpha.1] - 2026-10-23
 
 The JSON data of `folklore/laravel-folklore` 2.0.0-alpha.3, in its own package ([laravel-folklore's decision 0021](https://github.com/folkloreinc/laravel-folklore/pull/107), [#1](https://github.com/folkloreinc/laravel-json-data/issues/1)). The changes below are those from laravel-folklore 2.0.0-alpha.3, whose 1.x names stay there.

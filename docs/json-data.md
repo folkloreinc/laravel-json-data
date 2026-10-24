@@ -2,7 +2,7 @@
 
 Specification of `JsonDataCast`. It was built in `folklore/laravel-folklore` 2, designed in [folkloreinc/laravel-folklore#56](https://github.com/folkloreinc/laravel-folklore/issues/56#issuecomment-6344885526) and recorded in [decisions](decisions/) 0005 to 0007, 0013 and 0016, then moved to this package ([laravel-folklore's decision 0021](https://github.com/folkloreinc/laravel-folklore/pull/107)). The 1.x behaviour it starts from is described in laravel-folklore's [current-state.md](https://github.com/folkloreinc/laravel-folklore/blob/v2.x/docs/current-state.md#jsondatacast).
 
-A model declares its JSON columns with `jsonDataSchema()`, from alpha 2 ([laravel-folklore's decision 0020](https://github.com/folkloreinc/laravel-folklore/pull/106)). Until then, and for the models without a schema, the cast takes its declarations from a hook ([Hooks](#hooks)): laravel-folklore feeds its 1.x declarations through it. Numbers like #59 below are issues and pull requests of `folkloreinc/laravel-folklore`.
+A model declares its JSON columns with `jsonDataSchema()` ([Schema](#schema), [laravel-folklore's decision 0020](https://github.com/folkloreinc/laravel-folklore/pull/106)). For the models without a schema, the cast takes its declarations from a hook ([Hooks](#hooks)): laravel-folklore feeds its 1.x declarations through it. Numbers like #59 below are issues and pull requests of `folkloreinc/laravel-folklore`.
 
 ## Goals
 
@@ -56,9 +56,136 @@ JsonData::map([
 
 The registry is read by the cast, the reference listing and the rewrite command. Nothing else keeps a list of keys.
 
+## Schema
+
+A model declares its JSON columns with a schema per attribute (`HasJsonDataSchema`), built with the fluent factory `Json` ([laravel-folklore's decision 0020](https://github.com/folkloreinc/laravel-folklore/pull/106), [#6](https://github.com/folkloreinc/laravel-json-data/issues/6)). This is the package's only way to declare a column; the declarations hook is there for laravel-folklore's 1.x declarations.
+
+```php
+use Folklore\JsonData\Contracts\HasJsonDataSchema;
+use Folklore\JsonData\JsonDataCast;
+use Folklore\JsonData\Schema\Json;
+use Folklore\JsonData\Schema\ObjectType;
+
+class Offer extends Model implements HasJsonDataSchema
+{
+    protected $casts = ['data' => JsonDataCast::class];
+
+    public function jsonDataSchema(string $attribute): ?ObjectType
+    {
+        return match ($attribute) {
+            'data' => Json::object([
+                'name' => Json::string()->translatable()->required()->max(120)->extract('name_{locale}'),
+                'benefits' => Json::list(Json::string()->max(200))->max(10),
+                'seo' => Json::object([
+                    'title' => Json::string()->input('seo_title'),
+                ]),
+                'prize' => Json::reference('prize')->relation('prizes'),
+                'source' => Json::reference('revision'),
+                'body' => Json::document()->references('media'),
+                'status' => Json::enum(OfferStatus::class)->default(OfferStatus::Draft),
+            ])->additional(false),
+            default => null,
+        };
+    }
+}
+```
+
+- The method runs on the instance, so a schema can depend on the model's attributes: the fields of its type, for example. It is memoized per instance and attribute, so a schema that depends on an attribute is built from its value when the schema is first needed. A schema that reads its own JSON attribute while it is built reads it without a schema.
+- For an attribute whose schema is `null`, or a model without `HasJsonDataSchema`, the cast asks the declarations hook ([Hooks](#hooks)).
+- `JsonData::schema($model, 'data')` returns the schema of an attribute.
+
+### Nodes
+
+| Node | Stored as | Options |
+|---|---|---|
+| `Json::string()` | A string | `min()`, `max()` (length), `pattern()` |
+| `Json::integer()`, `Json::number()` | A number | `min()`, `max()` |
+| `Json::boolean()` | A boolean | |
+| `Json::date()`, `Json::datetime()` | An ISO 8601 string: `2026-10-23`, `2026-10-23T14:30:00+00:00` | A `DateTimeInterface` given is formatted |
+| `Json::enum(BackedEnum::class)`, `Json::enum([...])` | The enum's value | A case given is stored as its value |
+| `Json::object([...])` | An object | `additional(bool)`: whether keys outside the schema are kept |
+| `Json::list(node)` | An array | `min()`, `max()` (length) |
+| `Json::map(node)` | An object with any keys | `min()`, `max()` (number of keys) |
+| `Json::any()` | Any value, not looked into | For data the application doesn't describe yet |
+| `Json::reference(key)` | `{key}://{identifier}` | `relation()`, `using()` |
+| `Json::document()` | A document (ProseMirror JSON…), as given | `references(...)` |
+
+Every node has `required()`, `nullable()`, `default()` and `input()`. A scalar node (a string, a number, a boolean, a date, an enum or a reference) also has `translatable()` and `extract()`.
+
+- `required()`, `nullable()`, `min()`, `max()` and `pattern()` are kept on the nodes for the validation rules, the next slice of the schema. This slice doesn't check them.
+- `translatable()` stores the value as an object keyed by locale (`{"fr": "…", "en": "…"}`), from the [locales](#locales).
+- `input('seo_title')` reads the node from that key of the flat input ([Filling](#filling)), instead of its name. Not under a list or a map.
+- `extract('name_sort')` copies the value into a column of the model when it is written, to sort or search on it, as the `columns` of a declaration. A translatable node is copied into one column per locale, named with a `{locale}` placeholder (`name_{locale}`). Not under a list or a map.
+- `default()` is written by `JsonData::fill()` when neither the input nor the stored value has the path ([Filling](#filling)).
+- `Json` is macroable: laravel-folklore's medias module adds `Json::media()`, a `Json::reference()` with the key it writes, synced to `medias`. This package doesn't know media.
+- Property names are not empty and have no `.` or `*`.
+
+### References
+
+A schema compiles into the declarations of the [hook](#declaring-paths), so a column declared either way behaves the same:
+
+| Node | Declaration |
+|---|---|
+| `'prize' => Json::reference('prize')->relation('prizes')` | `['path' => 'prize', 'key' => 'prize', 'relation' => 'prizes']` |
+| `'image' => Json::media()->translatable()` | `['path' => 'image.*', 'key' => 'media', 'relation' => 'medias']` |
+| `'prizes' => Json::list(Json::object(['prize' => Json::reference('prize')]))` | `['path' => 'prizes.*.prize', 'key' => 'prize']` |
+| `'body' => Json::document()->references('media', Json::reference('prize')->relation('prizes'))` | `['path' => 'body.**', 'key' => 'media']` and `['path' => 'body.**', 'key' => 'prize', 'relation' => 'prizes']` |
+
+- The key must be mapped ([The registry of keys](#the-registry-of-keys)): it is the key written, and its handler applies, or the node's `using()` handler.
+- With `relation()`, the references are synced to that relation of the model ([Syncing](#syncing)), whose related model must be the key's model.
+- **Without a relation, a reference is resolved, checked with `allows()`, loaded in batches and listed (with a `null` relation), but not synced** ([#4](https://github.com/folkloreinc/laravel-json-data/issues/4)). Every mapped key of the key's model is accepted at its path, and the rewrite command rewrites it. A record of where a row came from, or of the record a snapshot was taken from, needs no relation.
+- `document()->references()` takes keys, or reference nodes to give them a relation. Its references are found at any depth, as `**` ([Paths](#paths)).
+
+### Filling
+
+`JsonData::fill(Model $model, array $input): void` puts a flat input into the JSON attributes of a model that have a schema. Clients send `name`, never `data.name`:
+
+```php
+$offer = new Offer;
+$offer->fill($input);            // the model's fillable attributes
+JsonData::fill($offer, $input);  // its JSON attributes
+$offer->save();
+```
+
+- **The input keys** are the root properties of each schema, by their name, and the nodes with an `input()` name, at any depth outside lists and maps. A root property with an `input()` name is read from that name only. A nested object is given as an object under its root property (`'seo' => ['title' => '…']`), or by the `input()` names of its nodes.
+- **A partial update** replaces the paths it gives and keeps the others. An object given for an object node replaces the properties it gives and keeps the others; a list, a map, a document or `any` replaces the stored value.
+- **`null` clears a path**: it is stored as `null`.
+- **The input is merged into the stored value**, with its references as `{key}://{identifier}` strings, so the references that don't resolve are kept as they are, as the repositories do since 1.1.8. The values assigned since the model was saved and not prepared yet are kept too.
+- **A translatable node**: a string goes into the default locale, and an object keyed by locale replaces the locales it gives and keeps the others. A locale that isn't one of the locales is refused with `InvalidJsonData`.
+- **Defaults** are written for the paths that neither the input nor the stored value has: in each object of the value, including those of its lists and maps. They are written into the attributes that the input fills, and into every attribute of a model that doesn't exist yet. A path stored as `null` keeps its `null`.
+- **Values** are stored as their nodes store them: an enum case as its value, a date as its ISO 8601 string. Anything else is put as it is given: references are prepared by their handler when the model is saved ([Writing](#writing)), and the other values are checked by the validation rules of the next slice.
+- **The model's own attributes stay Eloquent's**: `fill()` doesn't set them.
+
+**Unknown keys.** A key of the input that is neither fillable on the model (`isFillable()`) nor an input key of one of its schemas is refused with `InvalidJsonData`, which lists them, when the root of one of the model's schemas is `additional(false)`. Otherwise it is ignored, as `fill()` ignores an attribute that isn't fillable. A key of an object given for an object node that the node doesn't have is refused when that object is `additional(false)`, and kept otherwise. Nothing is filled when a key is refused.
+
+An object allows additional keys by default, and refuses them by default under `JsonData::enforceMap()`. Sites that keep the 1.x behaviour declare `additional(true)`, or don't declare a schema.
+
+`JsonData::fill()` does nothing for a model without a schema.
+
+### Locales
+
+The locales of translatable nodes, and the default one, come from the `LocaleResolver` bound in the container. The package binds `ConfigLocaleResolver`, which reads its config:
+
+| Config | Default | |
+|---|---|---|
+| `json-data.locales` | `null`: `[app.locale]` | The locales |
+| `json-data.default_locale` | `null`: `app.locale` when it is one of the locales, else the first one | The locale a string goes into |
+
+Publish the config with `php artisan vendor:publish --tag=json-data-config`. An application, or a package, binds its own resolver instead, as laravel-folklore does to read `site.locales`:
+
+```php
+$this->app->bind(LocaleResolver::class, SiteLocaleResolver::class);
+```
+
+The locales are read when a translatable value is filled, and when a schema with a translatable `extract()` is compiled, once per schema.
+
+### Not in this slice
+
+The validation rules (`Json::rules()`, `validatesOnSave()`) and the JSON Schema export (`toJsonSchema()`) are the next slices ([#6](https://github.com/folkloreinc/laravel-json-data/issues/6)).
+
 ## Declaring paths
 
-Until the schema, the declarations hook gives, for each cast column of a model, its reference paths and the paths copied into columns. A path maps to a relation name, or to an array of options:
+For a model without a schema, the declarations hook gives, for each cast column of a model, its reference paths and the paths copied into columns. A path maps to a relation name, or to an array of options:
 
 ```php
 JsonData::declareUsing(fn (Model $model, string $attribute, mixed $value, array $attributes) => match (true) {
@@ -101,7 +228,7 @@ This is the shape of laravel-folklore's 1.x `getJsonDataRelations()` and `getJso
 | Option | Status | Meaning |
 |---|---|---|
 | `relation` | Kept | The relation to sync, and the fallback key. A callable is still accepted, deprecated |
-| `key` | **New** | The key to write. Must be mapped, and its model must be the relation's related model |
+| `key` | **New** | The key to write. Must be mapped, and its model must be the relation's related model. A path with a `key` and no `relation` is resolved and listed but not synced, as `Json::reference()` without a relation ([References](#references)) |
 | `using` | **New** | A handler class for this path only, instead of the key's handler |
 | `sync` | Kept | `false` to not sync this path, or a callable `fn (Relation $relation, array $ids, array $options)` |
 | `delete` | Kept | Delete the related rows that are no longer referenced, before syncing |
@@ -154,7 +281,7 @@ A value that can't be prepared throws `InvalidJsonReference` under `enforceMap()
 
 ### Partial updates
 
-laravel-folklore's repositories merge an update into the current value of the column, from `JsonDataCast::getValueWithUnresolvedReferences($model, $attribute)`. References that don't resolve (a lazy relation that isn't loaded, a related row that is gone, a reference the owner may no longer read) are put back before the merge, so that writing the value back doesn't replace them with `null`. This is the 1.1.8 behaviour ([#63](https://github.com/folkloreinc/laravel-folklore/pull/63)), kept.
+`JsonData::fill()` merges its input into the stored value ([Filling](#filling)). laravel-folklore's repositories merge an update into the current value of the column, from `JsonDataCast::getValueWithUnresolvedReferences($model, $attribute)`. References that don't resolve (a lazy relation that isn't loaded, a related row that is gone, a reference the owner may no longer read) are put back before the merge, so that writing the value back doesn't replace them with `null`. This is the 1.1.8 behaviour ([#63](https://github.com/folkloreinc/laravel-folklore/pull/63)), kept.
 
 ## Reading
 
@@ -321,10 +448,11 @@ What the package doesn't know, an application or a package sets once, in a servi
 
 | Hook | Given | laravel-folklore uses it for |
 |---|---|---|
-| `JsonData::declareUsing(fn (Model $model, string $attribute, mixed $value, array $attributes): ?array)` | The declarations of a column without a schema: `references` and `columns`, as [above](#declaring-paths). The first callback that returns an array wins | Its 1.x declarations and macros |
+| `JsonData::declareUsing(fn (Model $model, string $attribute, mixed $value, array $attributes): ?array)` | The declarations of a column without a schema (an attribute whose `jsonDataSchema()` returns `null`, or a model without one): `references` and `columns`, as [above](#declaring-paths). The first callback that returns an array wins | Its 1.x declarations and macros |
 | `JsonData::unwrapUsing(fn (object $value, ?JsonReference $target): mixed)` | A value that isn't a model, to turn into the model or the identifier it stands for. Returns the value unchanged when it doesn't know it | Its entities (`HasModel`, `ToEntity`, `Entity`) |
 | `JsonData::syncUsing(fn (Model $model, string $relationName, Relation $relation, array $ids): bool)` | The relation of a model and the keys of the referenced models. Returns true when it synced them, instead of the cast | The mediatheque's usage graph, under the `json` handle |
 | `JsonReferencesRewriteCommand::discoverUsing(fn (): iterable)` | Model classes that the rewrite command looks at by default | Its pages and blocks |
+| A `LocaleResolver` bound in the container | The locales of translatable nodes ([Locales](#locales)) | `site.locales` |
 
 `JsonData::flush()` forgets the registry and the hooks, for tests.
 
@@ -340,8 +468,10 @@ What the package doesn't know, an application or a package sets once, in a servi
 | `get`, `set`, `before_set` options | Handlers | Run, deprecated |
 | `lazy` | `JsonData::load()`, `withJsonReferences()` | Kept, deprecated |
 | `**` undocumented | `**` specified | — |
-| `getJsonDataRelations()`, `getJsonDataColumnExtract()` | `jsonDataSchema()` (alpha 2) | Kept in laravel-folklore, through the declarations hook, until its 3.0 |
+| `getJsonDataRelations()`, `getJsonDataColumnExtract()` | `jsonDataSchema()` | Kept in laravel-folklore, through the declarations hook, until its 3.0 |
 | One JSON column per repository (`$jsonAttributeName`) | laravel-folklore's `$jsonAttributes` | Kept, deprecated |
+| `$jsonAttributeFillable`, `$jsonAttributeExclude`: input keys into the column, in the base repository only; `'*'` stores every key that isn't fillable | `JsonData::fill()`, from the schema, for any code that saves the model; unknown keys refused under `additional(false)` | Kept in laravel-folklore for the models without a schema |
+| A fake relation with `sync => false` for a reference that isn't a relation | `Json::reference()` without a relation | — |
 | Synced by the base repository, after `saveData()` | Synced by the cast after any save with events | — |
 | `syncRelations()` then `refresh()` | Relations and memoized values unset | — |
 

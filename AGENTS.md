@@ -50,7 +50,7 @@ A tag that fails the checks publishes nothing: delete it (`git push origin :refs
 - Requirements: PHP `^8.3`, Laravel 12 and 13.
 - Install dependencies: `composer install`
 - Run tests: `composer test` (PHPUnit with Orchestra Testbench; suites in `tests/Unit` and `tests/Feature`). They use SQLite in memory by default. To run them against MySQL or PostgreSQL, set `DB_DRIVER=mysql` or `DB_DRIVER=pgsql` with `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME` and `DB_PASSWORD`; the database is wiped before each test.
-- The fixtures declare their JSON columns through `JsonData::declareUsing()` (`tests/DeclaresJsonData.php`, registered in `tests/TestCase.php`), as laravel-folklore's adapter does, until the schema.
+- Most fixtures declare their JSON columns through `JsonData::declareUsing()` (`tests/DeclaresJsonData.php`, registered in `tests/TestCase.php`), as laravel-folklore's adapter does. `tests/Feature/Fixtures/Offer.php` declares its column with a schema (`JsonDataSchemaTest`).
 - Format code: `composer format` (Laravel Pint, `laravel` preset); check it with `composer lint`.
 - Static analysis: `composer analyse` (Larastan at the maximum level). The errors of the code that came from laravel-folklore 1.x are listed in `phpstan-baseline.neon`: never add new errors to it, fix them instead. New code passes the maximum level without a baseline entry.
 - CI (GitHub Actions): `.github/workflows/tests.yml` runs the tests on PHP 8.3 to 8.5 × Laravel 12 and 13 with SQLite, and on PHP 8.4 × Laravel 12 and 13 with MySQL 8.4 and with PostgreSQL 17 (the fixtures' JSON columns are `jsonb` there); `.github/workflows/code-quality.yml` runs `composer validate`, Pint and Larastan.

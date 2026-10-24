@@ -3,7 +3,12 @@
 namespace Folklore\JsonData;
 
 use Closure;
+use Folklore\JsonData\Exceptions\InvalidJsonData;
 use Folklore\JsonData\Exceptions\InvalidJsonReference;
+use Folklore\JsonData\Schema\Compiler;
+use Folklore\JsonData\Schema\Filler;
+use Folklore\JsonData\Schema\ObjectType;
+use Folklore\JsonData\Schema\Schemas;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Collection;
@@ -199,6 +204,34 @@ final class JsonData
     }
 
     /**
+     * The schema of a model's JSON attribute (`HasJsonDataSchema`), or null when it has
+     * none. Memoized per instance and attribute.
+     */
+    public static function schema(Model $model, string $attribute): ?ObjectType
+    {
+        return Schemas::for($model, $attribute);
+    }
+
+    /**
+     * Puts a flat input into the JSON attributes of a model that have a schema
+     * (docs/json-data.md, "Filling"). Each key that a schema declares (a property of its
+     * root, or a node's `input()` name) is put at its path, and the other paths are kept;
+     * `null` clears a path. The model's own attributes are left to `fill()`.
+     *
+     * A key that is neither fillable nor in a schema is refused when the root of one of
+     * the model's schemas doesn't allow additional keys, which is the default under
+     * `enforceMap()`; otherwise it is ignored.
+     *
+     * @param  array<array-key, mixed>  $input
+     *
+     * @throws InvalidJsonData
+     */
+    public static function fill(Model $model, array $input): void
+    {
+        (new Filler)->fill($model, $input);
+    }
+
+    /**
      * Adds a callback that declares the JSON attributes of models without a schema
      * (docs/json-data.md, "Hooks"), such as laravel-folklore's adapter of its 1.x
      * declarations. It is given the model, the attribute, its decoded value and the
@@ -221,7 +254,8 @@ final class JsonData
 
     /**
      * What is declared for a JSON attribute of a model: its reference paths and the
-     * columns it is copied into. Empty when nothing declares it.
+     * columns it is copied into, from its schema, or else from the declarations hook.
+     * Empty when nothing declares it.
      *
      * @param  array<array-key, mixed>  $attributes
      * @return array{references: iterable<mixed>, columns: array<string, string>}
@@ -230,6 +264,13 @@ final class JsonData
      */
     public static function declarations(Model $model, string $attribute, mixed $value, array $attributes): array
     {
+        $schema = Schemas::for($model, $attribute);
+        if (! is_null($schema)) {
+            $compiled = Compiler::compile($schema);
+
+            return ['references' => $compiled['references'], 'columns' => $compiled['columns']];
+        }
+
         foreach (self::$declarers as $declarer) {
             $declared = $declarer($model, $attribute, $value, $attributes);
             if (is_array($declared)) {
