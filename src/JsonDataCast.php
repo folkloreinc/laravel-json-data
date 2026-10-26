@@ -1166,6 +1166,19 @@ class JsonDataCast implements CastsAttributes
     }
 
     /**
+     * The handler of a key's target, or the given one: what a reference node's validation
+     * rule resolves its values with.
+     *
+     * @param  class-string|null  $using
+     *
+     * @internal
+     */
+    public static function handlerFor(JsonReference $target, ?string $using = null): ReferenceHandler
+    {
+        return self::handler($target, is_null($using) ? [] : ['using' => $using]);
+    }
+
+    /**
      * The handler of a path's `using` option, or of its key, or the default one.
      *
      * @param  array<string, mixed>  $relation

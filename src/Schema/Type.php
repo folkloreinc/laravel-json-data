@@ -19,7 +19,7 @@ abstract class Type
     protected ?string $input = null;
 
     /**
-     * Whether the value must be given. Checked by the validation rules of a later slice.
+     * Whether the value must be given, checked by `Json::rules()`.
      */
     public function required(bool $required = true): static
     {
@@ -29,7 +29,7 @@ abstract class Type
     }
 
     /**
-     * Whether the value may be null. Checked by the validation rules of a later slice.
+     * Whether the value may be null, checked by `Json::rules()`.
      */
     public function nullable(bool $nullable = true): static
     {

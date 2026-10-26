@@ -4,6 +4,7 @@ namespace Folklore\JsonData\Schema;
 
 use BackedEnum;
 use Folklore\JsonData\Exceptions\InvalidJsonData;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Traits\Macroable;
 
 /**
@@ -106,5 +107,19 @@ class Json
     public static function document(): DocumentType
     {
         return new DocumentType;
+    }
+
+    /**
+     * The Laravel validation rules of the flat input that `JsonData::fill()` puts into a
+     * JSON attribute of the model, or into every attribute that has a schema, for a form
+     * request (docs/json-data.md, "Validation rules"). Empty for an attribute without a
+     * schema. The model is the one the input fills: a stored model keeps the paths that
+     * the input doesn't give, so `required()` doesn't ask for them again.
+     *
+     * @return array<string, list<mixed>>
+     */
+    public static function rules(Model $model, ?string $attribute = null): array
+    {
+        return RuleBuilder::for($model, $attribute);
     }
 }

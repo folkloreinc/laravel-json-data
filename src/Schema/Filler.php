@@ -91,7 +91,7 @@ final class Filler
         }
 
         if (! is_array($given)) {
-            // Not the shape of the node: the validation rules of a later slice refuse it
+            // Not the shape of the node: Json::rules() refuses it
             return $given;
         }
 

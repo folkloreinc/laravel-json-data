@@ -4,7 +4,7 @@ namespace Folklore\JsonData\Schema\Concerns;
 
 /**
  * The bounds of a node: of a number's value, or of the length of a string or a list.
- * Checked by the validation rules of a later slice.
+ * Checked by `Json::rules()`.
  */
 trait HasBounds
 {
