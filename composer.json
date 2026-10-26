@@ -27,7 +27,8 @@
         "illuminate/console": "^12.69|^13.30",
         "illuminate/contracts": "^12.69|^13.30",
         "illuminate/database": "^12.69|^13.30",
-        "illuminate/support": "^12.69|^13.30"
+        "illuminate/support": "^12.69|^13.30",
+        "illuminate/validation": "^12.69|^13.30"
     },
     "require-dev": {
         "larastan/larastan": "^3.0",

@@ -6,11 +6,16 @@ The package is released in pre-releases, tagged `v1.0.0-alpha.N`, then `beta.N` 
 
 ## [Unreleased]
 
+Syncing stored rows ([#5](https://github.com/folkloreinc/laravel-json-data/issues/5)), and the schema of JSON columns, second slice: validation rules ([#15](https://github.com/folkloreinc/laravel-json-data/issues/15), from [#6](https://github.com/folkloreinc/laravel-json-data/issues/6)).
+
 ### Added
 
 - `php artisan json-data:sync-references [--model=…] [--chunk=500] [--dry-run]` syncs the relations of the references of stored rows, as a save would, without saving the models and without model events, for rows written by imports, `saveQuietly()` or SQL ([#5](https://github.com/folkloreinc/laravel-json-data/issues/5)). It syncs a row only when its plan changes something, so a second run changes nothing, and reports the rows changed, the keys attached and detached, and the references that don't resolve (listed with `-v`). It finds its models as the rewrite command does, `JsonReferencesRewriteCommand::discoverUsing()` included.
 - `JsonDataCast::syncRelations($model, $only, pretend: true)` plans the sync without writing: by relation, the keys it holds (`current`), those to `attach`, `detach` and `delete`, whether it would change (`changed`, `null` when it can't tell) and the references that don't resolve (`unresolved`).
 - `JsonData::syncUsing()` takes an optional second callback, which returns the keys the first one has synced for a relation, or `null` when it doesn't sync it. Without it, a plan can't compare the relations such a callback may sync, and the command syncs them on every run.
+- `Json::rules(Model $model, ?string $attribute = null)`: the schema of a JSON attribute, or of every attribute that has one, compiled into Laravel validation rules on the keys of the flat input that `JsonData::fill()` reads, for form requests. Types, `min()`, `max()`, `pattern()`, enums, `required()` (which only refuses an empty value on a stored model, and for a node with a default), `nullable()`, nested objects (`array:` under `additional(false)`), lists, maps and the `input()` names.
+- The rule objects `Schema\Rules\Reference`, which checks that a reference, a model or an identifier given to a reference node resolves through its handler and is allowed, and `Schema\Rules\Translatable`, which takes a string for the default locale or an object keyed by the locales.
+- `illuminate/validation` is required, for `Rule::enum()` and the rule objects.
 
 ### Changed
 

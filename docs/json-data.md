@@ -112,7 +112,7 @@ class Offer extends Model implements HasJsonDataSchema
 
 Every node has `required()`, `nullable()`, `default()` and `input()`. A scalar node (a string, a number, a boolean, a date, an enum or a reference) also has `translatable()` and `extract()`.
 
-- `required()`, `nullable()`, `min()`, `max()` and `pattern()` are kept on the nodes for the validation rules, the next slice of the schema. This slice doesn't check them.
+- `required()`, `nullable()`, `min()`, `max()` and `pattern()` are checked by the [validation rules](#validation-rules), not when the value is filled or saved.
 - `translatable()` stores the value as an object keyed by locale (`{"fr": "…", "en": "…"}`), from the [locales](#locales).
 - `input('seo_title')` reads the node from that key of the flat input ([Filling](#filling)), instead of its name. Not under a list or a map.
 - `extract('name_sort')` copies the value into a column of the model when it is written, to sort or search on it, as the `columns` of a declaration. A translatable node is copied into one column per locale, named with a `{locale}` placeholder (`name_{locale}`). Not under a list or a map.
@@ -153,7 +153,7 @@ $offer->save();
 - **The input is merged into the stored value**, with its references as `{key}://{identifier}` strings, so the references that don't resolve are kept as they are, as the repositories do since 1.1.8. The values assigned since the model was saved and not prepared yet are kept too.
 - **A translatable node**: a string goes into the default locale, and an object keyed by locale replaces the locales it gives and keeps the others. A locale that isn't one of the locales is refused with `InvalidJsonData`.
 - **Defaults** are written for the paths that neither the input nor the stored value has: in each object of the value, including those of its lists and maps. They are written into the attributes that the input fills, and into every attribute of a model that doesn't exist yet. A path stored as `null` keeps its `null`.
-- **Values** are stored as their nodes store them: an enum case as its value, a date as its ISO 8601 string. Anything else is put as it is given: references are prepared by their handler when the model is saved ([Writing](#writing)), and the other values are checked by the validation rules of the next slice.
+- **Values** are stored as their nodes store them: an enum case as its value, a date as its ISO 8601 string. Anything else is put as it is given: references are prepared by their handler when the model is saved ([Writing](#writing)), and the other values are checked by the [validation rules](#validation-rules), before filling.
 - **The model's own attributes stay Eloquent's**: `fill()` doesn't set them.
 
 **Unknown keys.** A key of the input that is neither fillable on the model (`isFillable()`) nor an input key of one of its schemas is refused with `InvalidJsonData`, which lists them, when the root of one of the model's schemas is `additional(false)`. Otherwise it is ignored, as `fill()` ignores an attribute that isn't fillable. A key of an object given for an object node that the node doesn't have is refused when that object is `additional(false)`, and kept otherwise. Nothing is filled when a key is refused.
@@ -179,12 +179,50 @@ $this->app->bind(LocaleResolver::class, SiteLocaleResolver::class);
 
 The locales are read when a translatable value is filled, and when a schema with a translatable `extract()` is compiled, once per schema.
 
-### Not built yet
+### Validation rules
 
-Two slices of the schema come before 1.0 ([#6](https://github.com/folkloreinc/laravel-json-data/issues/6), [roadmap](roadmap.md)):
+`Json::rules(Model $model, ?string $attribute = null): array` compiles the schema of a JSON attribute, or of every attribute of the model that has one, into Laravel validation rules on the keys of the flat input that `JsonData::fill()` reads ([#15](https://github.com/folkloreinc/laravel-json-data/issues/15)). They are Laravel's rules, and two rule objects of the package, so they need nothing else:
 
-- **Validation rules:** `Json::rules($model, $attribute)` compiles the schema into Laravel validation rules on the flat input keys, for form requests, with no dependency; validating on save (`validatesOnSave()`) is optional.
-- **JSON Schema export:** `toJsonSchema()` gives a standard JSON Schema (draft 2020-12), with `x-reference` and `x-translatable` extensions, for API specs and front-end types.
+```php
+class UpdateOffer extends FormRequest
+{
+    public function rules(): array
+    {
+        return [
+            'handle' => ['required', 'string'],
+            ...Json::rules($this->route('offer'), 'data'),
+        ];
+    }
+}
+
+JsonData::fill($offer, $request->validated());
+```
+
+| Node | Rules at its key |
+|---|---|
+| `string()` | `string`, `min`, `max` (length), `regex` from `pattern()` |
+| `integer()`, `number()` | `integer` or `numeric`, `min`, `max` |
+| `boolean()` | `boolean` |
+| `date()` | `date_format:Y-m-d` |
+| `datetime()` | `date_format` of ISO 8601, with an offset or `Z`, and with or without milliseconds |
+| `enum()` | `Rule::enum()` for a backed enum, `Rule::in()` for a list of values |
+| `reference()` | `Reference`: a model, a reference (`{key}://{identifier}`) or an identifier must be a model of the key's model, which the handler resolves (`resolveMany()`) and allows (`allows()`) the model to refer to. A reference of another key of the same model is accepted, as the cast accepts it. Other values, such as files, are left to the handler, which prepares them when the model is saved |
+| `object()` | `array`, or `array:` with its properties when it is `additional(false)`; each property at `{key}.{property}` |
+| `list()` | `array`, `list`, `min`, `max` (length); its items at `{key}.*` |
+| `map()` | `array`, `min`, `max` (number of keys); its values at `{key}.*` |
+| `document()` | `array` |
+| `any()` | None: the key is listed, so that `validated()` keeps it |
+
+- **The keys** are those of [Filling](#filling): the root properties by name, or by their `input()` name, and a nested object's properties under its key (`seo.title`). A nested node with an `input()` name has rules at both keys.
+- **`required()`** asks for the key when the model doesn't exist yet. A stored model keeps the paths the input doesn't give, so there, and for a node with a `default()`, which `fill()` writes, it only refuses an empty value (`sometimes`, `required`). A required property of an object is required with its object (`required_with:seo`); a nested node with an `input()` name at one of its two keys (`required_without`). The items of a list or a map replace the stored ones, so their required properties are always required.
+- **`nullable()`** adds `nullable`. Without it, `null` is refused, except for `any()`.
+- **A translatable node** takes a string, which goes into the default locale and is checked with the node's rules, or an object keyed by locale, whose keys must be locales and whose values are checked at `{key}.*`, where `null` is accepted (`Translatable`).
+- **The model** is the one the input fills: its schema is built on the instance, whether it exists decides what `required()` means, and it is the owner whose references `allows()` checks. Give a new instance for a form that creates a model.
+- Unknown keys at the root of the input are refused by `JsonData::fill()` ([Filling](#filling)), not by the rules: a form request ignores the keys it has no rule for.
+- The rules are an array: a form request replaces the rules of a key, for instance for a handler that takes values the `Reference` rule refuses, such as URLs.
+- An attribute without a schema has no rules.
+
+Not built yet: validating on save (`validatesOnSave()`), opt-in, and the JSON Schema export, `toJsonSchema()`, a standard JSON Schema (draft 2020-12) with `x-reference` and `x-translatable` extensions, for API specs and front-end types ([roadmap](roadmap.md)).
 
 ## Declaring paths
 
