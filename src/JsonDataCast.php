@@ -559,7 +559,8 @@ class JsonDataCast implements CastsAttributes
                 $found = self::referencedKeys($model, $relationName, self::paths($relation), $value, $pretend ? (string) $key : null);
                 $unresolved[$relationName] = array_merge($unresolved[$relationName] ?? [], $found['unresolved']);
                 $relationsMap[$relationName] = [
-                    'relation' => $relation,
+                    // The options of every declaration of the relation, the first one winning
+                    'relation' => array_merge($relation, $relationsMap[$relationName]['relation'] ?? []),
                     'ids' => array_values(array_unique(
                         array_merge(
                             $relationsMap[$relationName]['ids'] ?? [],

@@ -406,6 +406,7 @@ After the model is saved, the references at each relation's paths are synced to 
 
 - Only references whose key resolves to the relation's related model count. References of several keys to the same model (`medias://` and `media://`) are synced together, by the related model's key.
 - `sync => false` and a `sync` callable behave as in 1.x.
+- A relation declared at several paths takes the options of all its declarations (`sync`, `delete`): an option given at one path applies to the relation. When two declarations give an option different values, the first one wins ([#18](https://github.com/folkloreinc/laravel-json-data/issues/18)).
 - Syncing doesn't call `refresh()` on the model anymore, nor does the base repository after it: it unsets the synced relations and the memoized values.
 
 An application can sync a relation itself, instead of the sync by kind of relation, with `JsonData::syncUsing()` ([Hooks](#hooks)). laravel-folklore's medias module syncs the media into `laravel-mediatheque` 2's `medias_pivot`, which is also its usage graph, under the handle `json`, so that a media attached otherwise stays.

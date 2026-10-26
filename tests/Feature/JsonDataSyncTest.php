@@ -4,6 +4,7 @@ namespace Folklore\JsonData\Tests\Feature;
 
 use Folklore\JsonData\JsonData;
 use Folklore\JsonData\JsonDataCast;
+use Folklore\JsonData\Tests\Feature\Fixtures\Block;
 use Folklore\JsonData\Tests\Feature\Fixtures\BrandGame;
 use Folklore\JsonData\Tests\Feature\Fixtures\Game;
 use Folklore\JsonData\Tests\Feature\Fixtures\Prize;
@@ -160,13 +161,9 @@ class JsonDataSyncTest extends JsonDataTestCase
 
     public function test_pretend_cant_compare_a_relation_with_a_sync_callable()
     {
-        $game = new class extends Game
-        {
-            public function jsonDataReferences(string $attribute, mixed $value, array $attributes): array
-            {
-                return ['image.*' => ['relation' => 'medias', 'sync' => fn () => null]];
-            }
-        };
+        // `medias` is also declared at questions.*.choices.*.image, without the option
+        Game::$imageOptions = ['sync' => fn () => null];
+        $game = new Game;
         $game->data = ['image' => ['fr' => 'medias://'.$this->makeMedia()->id]];
         $game->saveQuietly();
 
@@ -174,6 +171,55 @@ class JsonDataSyncTest extends JsonDataTestCase
 
         $this->assertNull($plan['medias']['changed']);
         $this->assertNull($plan['medias']['current']);
+    }
+
+    /**
+     * #18: the options of a relation declared at several paths were those of its last
+     * declaration only.
+     */
+    public function test_an_option_given_at_one_path_applies_to_the_relation()
+    {
+        $synced = [];
+        Game::$imageOptions = ['sync' => function ($relation, array $ids) use (&$synced) {
+            $synced[] = $ids;
+        }];
+        $image = $this->makeMedia();
+        $choiceImage = $this->makeMedia();
+
+        $game = new Game;
+        $game->data = [
+            'image' => ['fr' => $image],
+            'questions' => [['choices' => [['image' => $choiceImage]]]],
+        ];
+        $game->save();
+
+        $this->assertCount(1, $synced);
+        $this->assertEqualsCanonicalizing([$image->id, $choiceImage->id], $synced[0]);
+        $this->assertSame(0, $game->medias()->count());
+    }
+
+    public function test_the_first_declaration_of_an_option_wins()
+    {
+        $game = new class extends Game
+        {
+            public function jsonDataReferences(string $attribute, mixed $value, array $attributes): array
+            {
+                return [
+                    'image.*' => ['relation' => 'blocks', 'delete' => false],
+                    'blocks.*' => ['relation' => 'blocks', 'delete' => true],
+                ];
+            }
+        };
+        $kept = $this->makeBlock();
+        $removed = $this->makeBlock();
+        $game->data = ['blocks' => [$kept, $removed]];
+        $game->save();
+        $game->data = ['blocks' => [$kept]];
+        $game->save();
+
+        // `delete` is false at image.*, declared first: the block is detached, not deleted
+        $this->assertSame([$kept->id], $game->blocks()->pluck('blocks.id')->all());
+        $this->assertNotNull(Block::find($removed->id));
     }
 
     public function test_pretend_lists_the_references_that_dont_resolve()

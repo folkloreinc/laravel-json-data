@@ -12,6 +12,10 @@ The package is released in pre-releases, tagged `v1.0.0-alpha.N`, then `beta.N` 
 - `JsonDataCast::syncRelations($model, $only, pretend: true)` plans the sync without writing: by relation, the keys it holds (`current`), those to `attach`, `detach` and `delete`, whether it would change (`changed`, `null` when it can't tell) and the references that don't resolve (`unresolved`).
 - `JsonData::syncUsing()` takes an optional second callback, which returns the keys the first one has synced for a relation, or `null` when it doesn't sync it. Without it, a plan can't compare the relations such a callback may sync, and the command syncs them on every run.
 
+### Fixed
+
+- A relation declared at several paths takes the options of all its declarations, the first one winning, instead of those of its last declaration only: a `sync` callable or `delete` given at one path was ignored when another path of the relation came after it ([#18](https://github.com/folkloreinc/laravel-json-data/issues/18)).
+
 ## [1.0.0-alpha.2] - 2026-10-23
 
 The schema of JSON columns, first slice ([laravel-folklore's decision 0020](https://github.com/folkloreinc/laravel-folklore/pull/106), [#7](https://github.com/folkloreinc/laravel-json-data/issues/7)), and the package's commands under `json-data:`.
