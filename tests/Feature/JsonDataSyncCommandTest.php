@@ -195,13 +195,17 @@ class JsonDataSyncCommandTest extends JsonDataTestCase
         $this->artisan('json-data:sync-references', ['--model' => [RegistryGame::class], '--verbose' => true])
             ->expectsOutputToContain(RegistryGame::class.' #'.$id.' data.image.fr: medias://999 doesn\'t resolve')
             ->expectsOutputToContain(RegistryGame::class.' #'.$id.' data.prizes.1.prize: prize://missing doesn\'t resolve')
-            ->expectsTable(self::HEADERS, [[RegistryGame::class, 1, 1, 2, 0, 0, 2]])
+            ->expectsTable(self::HEADERS, [[RegistryGame::class, 1, 1, 1, 0, 0, 2]])
             ->assertSuccessful();
 
-        // As a save does, a reference by the related model's key is synced, found or not
+        // A reference to a row that doesn't exist is reported, and not synced
         $game = RegistryGame::findOrFail($id);
         $this->assertSame([$prize->id], $game->prizes()->pluck('prizes.id')->all());
-        $this->assertSame([999], DB::table('mediables')->where('mediable_id', $game->id)->pluck('media_id')->map(fn (mixed $id) => (int) $id)->all());
+        $this->assertSame(0, DB::table('mediables')->where('mediable_id', $game->id)->count());
+
+        $this->artisan('json-data:sync-references', ['--model' => [RegistryGame::class]])
+            ->expectsTable(self::HEADERS, [[RegistryGame::class, 1, 0, 0, 0, 0, 2]])
+            ->assertSuccessful();
     }
 
     public function test_the_command_syncs_the_models_added_with_discover_using()

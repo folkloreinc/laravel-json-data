@@ -556,7 +556,7 @@ class JsonDataCast implements CastsAttributes
                     continue;
                 }
                 $declaredIn[$relationName][] = (string) $key;
-                $found = self::referencedKeys($model, $relationName, self::paths($relation), $value, $pretend ? (string) $key : null);
+                $found = self::referencedKeys($model, $relationName, self::paths($relation), $value, (string) $key);
                 $unresolved[$relationName] = array_merge($unresolved[$relationName] ?? [], $found['unresolved']);
                 $relationsMap[$relationName] = [
                     // The options of every declaration of the relation, the first one winning
@@ -750,7 +750,9 @@ class JsonDataCast implements CastsAttributes
      * The keys of the related models referenced at a relation's paths: the identifiers of
      * the mapped keys whose model is the related model, converted to its key when their
      * column isn't the key, and, as in 1.x, the identifiers of the key named after the
-     * relation when it isn't mapped.
+     * relation when it isn't mapped. Only the models found through the related model's
+     * query count (#5): a reference to a row that doesn't exist, or that a global scope
+     * hides, isn't synced.
      *
      * @param  array<int, string>  $paths
      * @param  array<array-key, mixed>  $data
@@ -762,23 +764,23 @@ class JsonDataCast implements CastsAttributes
     }
 
     /**
-     * The keys of relatedKeys(), and, when the attribute is given, the references whose
-     * related model isn't found through its query: the keys of those whose column is the
-     * key are kept, as a save keeps them, and those of the others can't be found.
+     * The keys of relatedKeys(), and the references whose related model isn't found, which
+     * aren't synced. The attribute of the data is given to the references in the list.
      *
      * @param  array<int, string>  $paths
      * @param  array<array-key, mixed>  $data
-     * @param  string|null  $attribute  The attribute of the data, to look for the references that don't resolve.
      * @return array{keys: list<mixed>, unresolved: list<JsonReferenceEntry>}
      */
     protected static function referencedKeys(Model $model, string $relationName, array $paths, array $data, ?string $attribute = null): array
     {
         $related = self::relatedClass($model, $relationName);
-        $keys = [];
-        /** @var array<string, list<JsonReferenceEntry>> $byKey */
-        $byKey = [];
-        /** @var list<JsonReferenceEntry> $byRelatedKey */
-        $byRelatedKey = [];
+        if (is_null($related)) {
+            return ['keys' => [], 'unresolved' => []];
+        }
+        $relatedModel = new $related;
+
+        /** @var array<string, list<JsonReferenceEntry>> $byColumn */
+        $byColumn = [];
         foreach ($paths as $pattern) {
             foreach (Paths::matching([$pattern], $data) as $path) {
                 $item = data_get($data, $path);
@@ -788,49 +790,33 @@ class JsonDataCast implements CastsAttributes
                 }
                 $entry = new JsonReferenceEntry($entry->key, $entry->identifier, $entry->target, $attribute, (string) $path, $relationName);
                 if ($entry->isMapped()) {
-                    if (! is_null($related) && $entry->target?->accepts($related)) {
-                        $byKey[$entry->key][] = $entry;
+                    if ($entry->target?->accepts($related)) {
+                        $byColumn[$entry->target->column()][] = $entry;
                     }
                 } elseif (! self::isRecursive($pattern) && $entry->key === $relationName) {
-                    $keys[] = $entry->identifier;
-                    $byRelatedKey[] = $entry;
+                    // An unmapped key is the relation's name, by the related model's key
+                    $byColumn[$relatedModel->getKeyName()][] = $entry;
                 }
             }
         }
 
+        $keys = [];
         $unresolved = [];
-        foreach ($byKey as $key => $entries) {
-            $target = JsonData::target($key);
-            if (is_null($target) || is_null($related)) {
-                continue;
-            }
-            $identifiers = array_map(fn (JsonReferenceEntry $entry) => $entry->identifier, $entries);
-            $relatedModel = new $related;
-            if ($target->column() === $relatedModel->getKeyName()) {
-                array_push($keys, ...$identifiers);
-                array_push($byRelatedKey, ...$entries);
-
-                continue;
-            }
-            $found = $relatedModel->newQuery()
-                ->whereIn($target->column(), array_values(array_unique($identifiers)))
-                ->pluck($relatedModel->getKeyName(), $target->column());
+        $integerKey = in_array($relatedModel->getKeyType(), ['int', 'integer'], true);
+        foreach ($byColumn as $column => $entries) {
+            // An integer key only has digits: other strings aren't looked up, which databases with types refuse
+            $identifiers = array_values(array_unique(array_filter(
+                array_map(fn (JsonReferenceEntry $entry) => $entry->identifier, $entries),
+                fn (string $identifier) => $column !== $relatedModel->getKeyName() || ! $integerKey || ctype_digit($identifier),
+            )));
+            $found = count($identifiers) === 0 ? [] : $relatedModel->newQuery()
+                ->whereIn($column, $identifiers)
+                ->pluck($relatedModel->getKeyName(), $column)
+                ->all();
             foreach ($entries as $entry) {
-                if ($found->has($entry->identifier)) {
-                    $keys[] = $found->get($entry->identifier);
+                if (array_key_exists($entry->identifier, $found)) {
+                    $keys[] = $found[$entry->identifier];
                 } else {
-                    $unresolved[] = $entry;
-                }
-            }
-        }
-
-        if (! is_null($attribute) && ! is_null($related) && count($byRelatedKey) > 0) {
-            $relatedModel = new $related;
-            $existing = array_map(fn (int|string $key) => (string) $key, self::keyValues($relatedModel->newQuery()
-                ->whereIn($relatedModel->getKeyName(), array_values(array_unique(array_map(fn (JsonReferenceEntry $entry) => $entry->identifier, $byRelatedKey))))
-                ->pluck($relatedModel->getKeyName())));
-            foreach ($byRelatedKey as $entry) {
-                if (! in_array($entry->identifier, $existing, true)) {
                     $unresolved[] = $entry;
                 }
             }

@@ -238,8 +238,26 @@ class JsonDataSyncTest extends JsonDataTestCase
             array_map(fn ($entry) => [(string) $entry, $entry->attribute, $entry->path, $entry->relation], $plan['prizes']['unresolved']),
         );
         $this->assertSame(['medias://998'], array_map('strval', $plan['medias']['unresolved']));
-        // As a save does, a reference by the related model's key is synced, found or not
-        $this->assertEquals(['999'], $plan['prizes']['attach']);
+        // A reference to a row that doesn't exist isn't synced
+        $this->assertSame([], $plan['prizes']['attach']);
+        $this->assertSame([], $plan['medias']['attach']);
+        $this->assertFalse($plan['medias']['changed']);
+    }
+
+    public function test_a_save_doesnt_sync_the_references_to_rows_that_dont_exist()
+    {
+        $block = $this->makeBlock();
+        $media = $this->makeMedia();
+
+        $game = new Game;
+        $game->data = [
+            'image' => ['fr' => 'medias://'.$media->id, 'en' => 'medias://999'],
+            'blocks' => ['blocks://'.$block->id, 'blocks://998', 'blocks://not-a-key'],
+        ];
+        $game->save();
+
+        $this->assertSame([$media->id], DB::table('mediables')->where('mediable_id', $game->id)->pluck('media_id')->map(fn (mixed $id) => (int) $id)->all());
+        $this->assertSame([$block->id], DB::table('blocks_pivot')->where('blockable_id', $game->id)->pluck('block_id')->map(fn (mixed $id) => (int) $id)->all());
     }
 
     /**

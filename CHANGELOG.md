@@ -12,6 +12,10 @@ The package is released in pre-releases, tagged `v1.0.0-alpha.N`, then `beta.N` 
 - `JsonDataCast::syncRelations($model, $only, pretend: true)` plans the sync without writing: by relation, the keys it holds (`current`), those to `attach`, `detach` and `delete`, whether it would change (`changed`, `null` when it can't tell) and the references that don't resolve (`unresolved`).
 - `JsonData::syncUsing()` takes an optional second callback, which returns the keys the first one has synced for a relation, or `null` when it doesn't sync it. Without it, a plan can't compare the relations such a callback may sync, and the command syncs them on every run.
 
+### Changed
+
+- The sync of a relation leaves out the references whose model isn't found through the related model's query, global scopes included, whatever the column of their key. A reference by the related model's key (`medias://999`) was synced without being looked up, which wrote a pivot row to a row that doesn't exist, or failed on a foreign key. The reference stays in the JSON, and `json-data:sync-references` reports it ([#5](https://github.com/folkloreinc/laravel-json-data/issues/5)).
+
 ### Fixed
 
 - A relation declared at several paths takes the options of all its declarations, the first one winning, instead of those of its last declaration only: a `sync` callable or `delete` given at one path was ignored when another path of the relation came after it ([#18](https://github.com/folkloreinc/laravel-json-data/issues/18)).

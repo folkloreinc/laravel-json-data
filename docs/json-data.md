@@ -405,6 +405,7 @@ After the model is saved, the references at each relation's paths are synced to 
 | `HasMany`, `HasOne`, `MorphMany`, `MorphOne` | Rows without a parent are attached; a row of another parent stays there (1.1.8, [#64](https://github.com/folkloreinc/laravel-folklore/pull/64)) |
 
 - Only references whose key resolves to the relation's related model count. References of several keys to the same model (`medias://` and `media://`) are synced together, by the related model's key.
+- **Only the rows that exist are synced**: a reference whose model isn't found through the related model's query, global scopes included (a row that is gone, soft-deleted, or of another tenant), is left out of the sync, whatever its key's column ([#5](https://github.com/folkloreinc/laravel-json-data/issues/5)). It stays in the JSON, and `json-data:sync-references` reports it. Before, a reference by the related model's key was synced without being looked up, which wrote a pivot row to nothing, or failed on a foreign key. This costs a query per relation and key column on each sync.
 - `sync => false` and a `sync` callable behave as in 1.x.
 - A relation declared at several paths takes the options of all its declarations (`sync`, `delete`): an option given at one path applies to the relation. When two declarations give an option different values, the first one wins ([#18](https://github.com/folkloreinc/laravel-json-data/issues/18)).
 - Syncing doesn't call `refresh()` on the model anymore, nor does the base repository after it: it unsets the synced relations and the memoized values.
@@ -422,7 +423,7 @@ An application can sync a relation itself, instead of the sync by kind of relati
 | `attach`, `detach` | The keys a sync would add and remove. A `HasMany` only attaches rows without a parent, and never detaches |
 | `delete` | With the `delete` option, the related rows a sync would delete |
 | `changed` | Whether a sync would change something. `null` when a `sync` callable, or a `syncUsing()` callback that can't say what it has synced, would sync the relation |
-| `unresolved` | The references whose model isn't found through its query (`JsonReferenceEntry`, with their attribute, path and relation). A reference by the related model's key is still synced, as a save syncs it; one by another column can't be converted to a key, and isn't |
+| `unresolved` | The references whose model isn't found through its query (`JsonReferenceEntry`, with their attribute, path and relation). They aren't synced |
 
 Without `pretend`, it returns `ids` and `relation` only, as before. Keys are compared as strings, as `sync()` compares them.
 
