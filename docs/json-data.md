@@ -181,7 +181,7 @@ The locales are read when a translatable value is filled, and when a schema with
 
 ### Validation rules
 
-`Json::rules(Model $model, ?string $attribute = null): array` compiles the schema of a JSON attribute, or of every attribute of the model that has one, into Laravel validation rules on the keys of the flat input that `JsonData::fill()` reads ([#6](https://github.com/folkloreinc/laravel-json-data/issues/6)). They are Laravel's rules, and two rule objects of the package, so they need nothing else:
+`Json::rules(Model $model, ?string $attribute = null): array` compiles the schema of a JSON attribute, or of every attribute of the model that has one, into Laravel validation rules on the keys of the flat input that `JsonData::fill()` reads ([#15](https://github.com/folkloreinc/laravel-json-data/issues/15)). They are Laravel's rules, and two rule objects of the package, so they need nothing else:
 
 ```php
 class UpdateOffer extends FormRequest
