@@ -519,19 +519,26 @@ class JsonDataCast implements CastsAttributes
      * The cast runs it after a model is saved, for the attributes that changed. A relation
      * gathers its references from every JSON attribute of the model.
      *
+     * With `pretend`, nothing is written and the model is left as it is: the plan of each
+     * relation also says what the sync would change, read from the database, and which
+     * references don't resolve (docs/json-data.md, "Syncing stored rows"). Returns the
+     * plan by relation, or null for a value that isn't a model.
+     *
      * @param  list<string>|null  $only  The JSON attributes whose relations are synced, or every one.
+     * @return array<string, array{relation: array<string, mixed>, ids: list<mixed>, current?: list<int|string>|null, attach?: list<int|string>, detach?: list<int|string>, delete?: list<int|string>, changed?: bool|null, unresolved?: list<JsonReferenceEntry>}>|null
      */
-    public static function syncRelations($model, ?array $only = null)
+    public static function syncRelations($model, ?array $only = null, bool $pretend = false)
     {
         // Only models have casts and relations to sync
         if (! ($model instanceof Model)) {
-            return;
+            return null;
         }
 
         $castsWithRelations = self::castAttributes($model);
 
         $relationsMap = [];
         $declaredIn = [];
+        $unresolved = [];
         $attributes = $model->getAttributes();
         foreach ($castsWithRelations as $key) {
             $attributeValue = data_get($attributes, $key);
@@ -549,12 +556,15 @@ class JsonDataCast implements CastsAttributes
                     continue;
                 }
                 $declaredIn[$relationName][] = (string) $key;
+                $found = self::referencedKeys($model, $relationName, self::paths($relation), $value, (string) $key);
+                $unresolved[$relationName] = array_merge($unresolved[$relationName] ?? [], $found['unresolved']);
                 $relationsMap[$relationName] = [
-                    'relation' => $relation,
+                    // The options of every declaration of the relation, the first one winning
+                    'relation' => array_merge($relation, $relationsMap[$relationName]['relation'] ?? []),
                     'ids' => array_values(array_unique(
                         array_merge(
                             $relationsMap[$relationName]['ids'] ?? [],
-                            self::relatedKeys($model, $relationName, self::paths($relation), $value),
+                            $found['keys'],
                         ),
                         SORT_REGULAR,
                     )),
@@ -568,6 +578,18 @@ class JsonDataCast implements CastsAttributes
                 fn (string $relationName) => count(array_intersect($declaredIn[$relationName] ?? [], $only)) > 0,
                 ARRAY_FILTER_USE_KEY,
             );
+        }
+
+        if ($pretend) {
+            foreach ($relationsMap as $relationName => $item) {
+                $relationsMap[$relationName] = array_merge(
+                    $item,
+                    self::syncDiff($model, $relationName, $item['relation'], $item['ids']),
+                    ['unresolved' => $unresolved[$relationName] ?? []],
+                );
+            }
+
+            return $relationsMap;
         }
 
         foreach ($relationsMap as $relationName => $item) {
@@ -625,6 +647,91 @@ class JsonDataCast implements CastsAttributes
     }
 
     /**
+     * What syncing a relation to the given keys would change, read from the database
+     * without writing, as the sync by kind of relation of syncRelations() would do it:
+     * the keys the relation holds, those to attach, to detach and, with the `delete`
+     * option, the related rows to delete. `changed` is null when a `sync` callable or a
+     * callback of `JsonData::syncUsing()` that can't say what it has synced would sync it.
+     *
+     * @param  array<string, mixed>  $relation
+     * @param  list<mixed>  $ids
+     * @return array{current: list<int|string>|null, attach: list<int|string>, detach: list<int|string>, delete: list<int|string>, changed: bool|null}
+     */
+    protected static function syncDiff(Model $model, string $relationName, array $relation, array $ids): array
+    {
+        $diff = ['current' => null, 'attach' => [], 'detach' => [], 'delete' => [], 'changed' => false];
+        if (! method_exists($model, $relationName)) {
+            return $diff;
+        }
+        $relationClass = $model->{$relationName}();
+        if (! $relationClass instanceof Relation) {
+            return $diff;
+        }
+        if (data_get($relation, 'delete', false)) {
+            $diff['delete'] = self::keyValues((clone $relationClass)
+                ->whereNotIn('id', $ids)
+                ->pluck($relationClass->getRelated()->getQualifiedKeyName()));
+        }
+
+        $synced = isset($relation['sync']) ? null : JsonData::syncedKeys($model, $relationName, $relationClass);
+        if (is_null($synced)) {
+            return array_merge($diff, ['changed' => null]);
+        }
+        if (is_array($synced)) {
+            $current = self::keyValues($synced);
+            $target = self::keyValues($ids);
+        } elseif ($relationClass instanceof BelongsToMany) {
+            $current = self::keyValues($relationClass->newPivotQuery()->pluck($relationClass->getRelatedPivotKeyName()));
+            $target = self::keyValues($ids);
+        } elseif ($relationClass instanceof BelongsTo) {
+            $foreignKey = $model->getAttribute($relationClass->getForeignKeyName());
+            $current = self::keyValues([$foreignKey]);
+            $target = self::keyValues(array_slice($ids, 0, 1));
+        } elseif ($relationClass instanceof HasOneOrMany) {
+            // Only the rows without a parent are attached, and none is detached
+            $current = self::keyValues((clone $relationClass)->pluck($relationClass->getRelated()->getQualifiedKeyName()));
+            $attach = count($ids) === 0 ? [] : self::keyValues($relationClass
+                ->getRelated()
+                ->newQuery()
+                ->whereIn('id', $ids)
+                ->whereNull($relationClass->getForeignKeyName())
+                ->pluck($relationClass->getRelated()->getKeyName()));
+            $target = array_merge($current, $attach);
+        } else {
+            // Not a kind of relation that the cast syncs
+            return $diff;
+        }
+
+        $diff['current'] = $current;
+        $diff['attach'] = array_values(array_diff($target, $current));
+        $diff['detach'] = array_values(array_diff($current, $target));
+        $diff['changed'] = count($diff['attach']) + count($diff['detach']) + count($diff['delete']) > 0;
+
+        return $diff;
+    }
+
+    /**
+     * The keys among values read from the database or the JSON, compared as strings, as
+     * `BelongsToMany::sync()` compares them. Null and values that aren't keys are left out.
+     *
+     * @param  iterable<mixed>  $values
+     * @return list<int|string>
+     */
+    protected static function keyValues(iterable $values): array
+    {
+        $keys = [];
+        foreach ($values as $value) {
+            if (is_int($value) || is_string($value)) {
+                $keys[] = $value;
+            } elseif (is_float($value)) {
+                $keys[] = (string) $value;
+            }
+        }
+
+        return $keys;
+    }
+
+    /**
      * After a model is saved with events, syncs the relations declared in the JSON
      * attributes that changed. `saveQuietly()` and `withoutEvents()` skip it.
      */
@@ -643,7 +750,9 @@ class JsonDataCast implements CastsAttributes
      * The keys of the related models referenced at a relation's paths: the identifiers of
      * the mapped keys whose model is the related model, converted to its key when their
      * column isn't the key, and, as in 1.x, the identifiers of the key named after the
-     * relation when it isn't mapped.
+     * relation when it isn't mapped. Only the models found through the related model's
+     * query count (#5): a reference to a row that doesn't exist, or that a global scope
+     * hides, isn't synced.
      *
      * @param  array<int, string>  $paths
      * @param  array<array-key, mixed>  $data
@@ -651,9 +760,27 @@ class JsonDataCast implements CastsAttributes
      */
     protected static function relatedKeys(Model $model, string $relationName, array $paths, array $data): array
     {
+        return self::referencedKeys($model, $relationName, $paths, $data)['keys'];
+    }
+
+    /**
+     * The keys of relatedKeys(), and the references whose related model isn't found, which
+     * aren't synced. The attribute of the data is given to the references in the list.
+     *
+     * @param  array<int, string>  $paths
+     * @param  array<array-key, mixed>  $data
+     * @return array{keys: list<mixed>, unresolved: list<JsonReferenceEntry>}
+     */
+    protected static function referencedKeys(Model $model, string $relationName, array $paths, array $data, ?string $attribute = null): array
+    {
         $related = self::relatedClass($model, $relationName);
-        $keys = [];
-        $byKey = [];
+        if (is_null($related)) {
+            return ['keys' => [], 'unresolved' => []];
+        }
+        $relatedModel = new $related;
+
+        /** @var array<string, list<JsonReferenceEntry>> $byColumn */
+        $byColumn = [];
         foreach ($paths as $pattern) {
             foreach (Paths::matching([$pattern], $data) as $path) {
                 $item = data_get($data, $path);
@@ -661,38 +788,44 @@ class JsonDataCast implements CastsAttributes
                 if (is_null($entry)) {
                     continue;
                 }
+                $entry = new JsonReferenceEntry($entry->key, $entry->identifier, $entry->target, $attribute, (string) $path, $relationName);
                 if ($entry->isMapped()) {
-                    if (! is_null($related) && $entry->target?->accepts($related)) {
-                        $byKey[$entry->key][] = $entry->identifier;
+                    if ($entry->target?->accepts($related)) {
+                        $byColumn[$entry->target->column()][] = $entry;
                     }
                 } elseif (! self::isRecursive($pattern) && $entry->key === $relationName) {
-                    $keys[] = $entry->identifier;
+                    // An unmapped key is the relation's name, by the related model's key
+                    $byColumn[$relatedModel->getKeyName()][] = $entry;
                 }
             }
         }
 
-        foreach ($byKey as $key => $identifiers) {
-            $target = JsonData::target($key);
-            if (is_null($target) || is_null($related)) {
-                continue;
-            }
-            $relatedModel = new $related;
-            if ($target->column() === $relatedModel->getKeyName()) {
-                array_push($keys, ...$identifiers);
-
-                continue;
-            }
-            $found = $relatedModel->newQuery()
-                ->whereIn($target->column(), array_values(array_unique($identifiers)))
-                ->pluck($relatedModel->getKeyName(), $target->column());
-            foreach ($identifiers as $identifier) {
-                if ($found->has($identifier)) {
-                    $keys[] = $found->get($identifier);
+        $keys = [];
+        $unresolved = [];
+        $integerKey = in_array($relatedModel->getKeyType(), ['int', 'integer'], true);
+        foreach ($byColumn as $column => $entries) {
+            // An integer key only has digits: other strings aren't looked up, which databases with types refuse
+            $identifiers = array_values(array_unique(array_filter(
+                array_map(fn (JsonReferenceEntry $entry) => $entry->identifier, $entries),
+                fn (string $identifier) => $column !== $relatedModel->getKeyName() || ! $integerKey || ctype_digit($identifier),
+            )));
+            $found = count($identifiers) === 0 ? [] : $relatedModel->newQuery()
+                ->whereIn($column, $identifiers)
+                ->pluck($relatedModel->getKeyName(), $column)
+                ->all();
+            foreach ($entries as $entry) {
+                if (array_key_exists($entry->identifier, $found)) {
+                    $keys[] = $found[$entry->identifier];
+                } else {
+                    $unresolved[] = $entry;
                 }
             }
         }
 
-        return array_values(array_unique($keys, SORT_REGULAR));
+        return [
+            'keys' => array_values(array_unique($keys, SORT_REGULAR)),
+            'unresolved' => $unresolved,
+        ];
     }
 
     /**

@@ -3,6 +3,7 @@
 namespace Folklore\JsonData;
 
 use Folklore\JsonData\Console\JsonReferencesRewriteCommand;
+use Folklore\JsonData\Console\JsonReferencesSyncCommand;
 use Folklore\JsonData\Contracts\LocaleResolver;
 use Folklore\JsonData\Schema\ConfigLocaleResolver;
 use Illuminate\Support\ServiceProvider;
@@ -31,6 +32,7 @@ class JsonDataServiceProvider extends ServiceProvider
 
             $this->commands([
                 JsonReferencesRewriteCommand::class,
+                JsonReferencesSyncCommand::class,
             ]);
         }
     }

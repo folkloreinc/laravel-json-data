@@ -57,6 +57,14 @@ final class JsonData
     private static array $syncers = [];
 
     /**
+     * The readers of the keys each callback of `syncUsing()` has synced, by the callback's
+     * index in `$syncers`, null for a callback given without one.
+     *
+     * @var list<(Closure(Model, string, Relation<Model, Model, mixed>): (list<mixed>|null))|null>
+     */
+    private static array $syncedReaders = [];
+
+    /**
      * Maps keys to their targets. Can be called more than once: a later call adds keys.
      * Mapping a key again to the same target does nothing; to another target, it throws.
      *
@@ -317,11 +325,19 @@ final class JsonData
      * of the relation, the relation and the keys of the referenced models, and returns
      * true when it synced them. The callbacks are tried in the order they were added.
      *
+     * `$synced` tells what the callback has synced, so that a sync can be planned without
+     * writing (`JsonDataCast::syncRelations()` with `pretend`, `json-data:sync-references
+     * --dry-run`). It is given the model, the name of the relation and the relation, and
+     * returns the keys the callback has synced for it, or null when the callback doesn't
+     * sync that relation. Without it, a plan can't tell what the callback would change.
+     *
      * @param  Closure(Model, string, Relation<Model, Model, mixed>, list<mixed>): bool  $syncer
+     * @param  (Closure(Model, string, Relation<Model, Model, mixed>): (list<mixed>|null))|null  $synced
      */
-    public static function syncUsing(Closure $syncer): void
+    public static function syncUsing(Closure $syncer, ?Closure $synced = null): void
     {
         self::$syncers[] = $syncer;
+        self::$syncedReaders[] = $synced;
     }
 
     /**
@@ -332,6 +348,33 @@ final class JsonData
     public static function syncers(): array
     {
         return self::$syncers;
+    }
+
+    /**
+     * The keys that the callbacks of `syncUsing()` have synced for a relation, from the
+     * first callback, in order, whose reader says it syncs the relation. False when no
+     * callback syncs it, and null when a callback without a reader comes first, since it
+     * may sync it.
+     *
+     * @param  Relation<Model, Model, mixed>  $relation
+     * @return list<mixed>|false|null
+     *
+     * @internal
+     */
+    public static function syncedKeys(Model $model, string $relationName, Relation $relation): array|false|null
+    {
+        foreach (self::$syncers as $index => $syncer) {
+            $reader = self::$syncedReaders[$index] ?? null;
+            if (is_null($reader)) {
+                return null;
+            }
+            $keys = $reader($model, $relationName, $relation);
+            if (is_array($keys)) {
+                return $keys;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -346,5 +389,6 @@ final class JsonData
         self::$declarers = [];
         self::$unwrapper = null;
         self::$syncers = [];
+        self::$syncedReaders = [];
     }
 }

@@ -42,10 +42,11 @@ $game->data['prizes'][0]['prize']; // the Prize model, resolved in one query per
 - The references of a collection resolve together (`JsonData::load()`), and are listed without resolving them (`JsonData::references()`).
 - The relations of the references are synced when the model is saved.
 - `php artisan json-data:rewrite-references` rewrites the references of one key to another.
+- `php artisan json-data:sync-references` syncs the relations of rows written without model events (imports, `saveQuietly()`, SQL), with `--dry-run`.
 
 ## Status
 
-In development, before 1.0. The code comes from [`folklore/laravel-folklore`](https://github.com/folkloreinc/laravel-folklore) 2, which requires this package. A model declares its JSON columns with `jsonDataSchema()`; laravel-folklore feeds its 1.x declarations through `JsonData::declareUsing()`. Before 1.0: a command that syncs the relations of stored rows, then the schema's validation rules and its JSON Schema export. See the [roadmap](docs/roadmap.md), indexed in [#1](https://github.com/folkloreinc/laravel-json-data/issues/1).
+In development, before 1.0. The code comes from [`folklore/laravel-folklore`](https://github.com/folkloreinc/laravel-folklore) 2, which requires this package. A model declares its JSON columns with `jsonDataSchema()`; laravel-folklore feeds its 1.x declarations through `JsonData::declareUsing()`. Before 1.0: the schema's validation rules and its JSON Schema export. See the [roadmap](docs/roadmap.md), indexed in [#1](https://github.com/folkloreinc/laravel-json-data/issues/1).
 
 Requires PHP 8.3+ and Laravel 12 or 13.
 

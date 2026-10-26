@@ -394,7 +394,7 @@ Applications extend it rather than implement the contract from scratch.
 After the model is saved, the references at each relation's paths are synced to that relation, as in 1.x, by the kind of relation. The cast does it in a `saved` listener, registered with its `saving` one, so a model is synced however it is saved: `$model->save()`, `create()`, a factory, a seeder, an application repository, or laravel-folklore's base repository ([#97](https://github.com/folkloreinc/laravel-folklore/issues/97)). 1.x only synced in the base repository.
 
 - Only the relations declared in the JSON attributes that changed are synced. A relation gathers its references from every JSON attribute of the model.
-- A model saved without events (`saveQuietly()`, `withoutEvents()`) isn't synced, nor are rows written another way (raw SQL, imports). `JsonDataCast::syncRelations($model)` syncs them, and `json-data:sync-references` will sync stored rows ([#5](https://github.com/folkloreinc/laravel-json-data/issues/5), before 1.0).
+- A model saved without events (`saveQuietly()`, `withoutEvents()`) isn't synced, nor are rows written another way (raw SQL, imports). `JsonDataCast::syncRelations($model)` syncs one, and `json-data:sync-references` syncs the stored rows ([Syncing stored rows](#syncing-stored-rows)).
 - laravel-folklore's base repository doesn't sync a second time.
 
 
@@ -405,10 +405,27 @@ After the model is saved, the references at each relation's paths are synced to 
 | `HasMany`, `HasOne`, `MorphMany`, `MorphOne` | Rows without a parent are attached; a row of another parent stays there (1.1.8, [#64](https://github.com/folkloreinc/laravel-folklore/pull/64)) |
 
 - Only references whose key resolves to the relation's related model count. References of several keys to the same model (`medias://` and `media://`) are synced together, by the related model's key.
+- **Only the rows that exist are synced**: a reference whose model isn't found through the related model's query, global scopes included (a row that is gone, soft-deleted, or of another tenant), is left out of the sync, whatever its key's column ([#5](https://github.com/folkloreinc/laravel-json-data/issues/5)). It stays in the JSON, and `json-data:sync-references` reports it. Before, a reference by the related model's key was synced without being looked up, which wrote a pivot row to nothing, or failed on a foreign key. This costs a query per relation and key column on each sync.
 - `sync => false` and a `sync` callable behave as in 1.x.
+- A relation declared at several paths takes the options of all its declarations (`sync`, `delete`): an option given at one path applies to the relation. When two declarations give an option different values, the first one wins ([#18](https://github.com/folkloreinc/laravel-json-data/issues/18)).
 - Syncing doesn't call `refresh()` on the model anymore, nor does the base repository after it: it unsets the synced relations and the memoized values.
 
 An application can sync a relation itself, instead of the sync by kind of relation, with `JsonData::syncUsing()` ([Hooks](#hooks)). laravel-folklore's medias module syncs the media into `laravel-mediatheque` 2's `medias_pivot`, which is also its usage graph, under the handle `json`, so that a media attached otherwise stays.
+
+### Planning a sync
+
+`JsonDataCast::syncRelations($model, $only, pretend: true)` writes nothing and leaves the model as it is: no relation is unset, no memoized value forgotten. It returns the plan of each relation, by name, with what a sync would change, read from the database:
+
+| Key | |
+|---|---|
+| `ids` | The keys of the referenced models, as a sync gives them to the relation |
+| `current` | The keys the relation holds: its pivot rows, the foreign key of a `BelongsTo`, the rows of a `HasMany`; or those a `JsonData::syncUsing()` callback says it has synced. `null` when it can't be read |
+| `attach`, `detach` | The keys a sync would add and remove. A `HasMany` only attaches rows without a parent, and never detaches |
+| `delete` | With the `delete` option, the related rows a sync would delete |
+| `changed` | Whether a sync would change something. `null` when a `sync` callable, or a `syncUsing()` callback that can't say what it has synced, would sync the relation |
+| `unresolved` | The references whose model isn't found through its query (`JsonReferenceEntry`, with their attribute, path and relation). They aren't synced |
+
+Without `pretend`, it returns `ids` and `relation` only, as before. Keys are compared as strings, as `sync()` compares them.
 
 ## Reference listing
 
@@ -439,6 +456,21 @@ php artisan json-data:rewrite-references --from=medias --to=media --dry-run
 
 `laravel-mediatheque` 2 planned a helper to rewrite JSON columns; this command is that helper.
 
+## Syncing stored rows
+
+```bash
+php artisan json-data:sync-references --dry-run -v
+php artisan json-data:sync-references --model='App\Models\Content'
+```
+
+The index that the relations are has to be rebuilt for rows written without model events: imports, `saveQuietly()`, raw SQL, rows that are never saved again, the data of an upgraded site ([#5](https://github.com/folkloreinc/laravel-json-data/issues/5)).
+
+- Syncs the relations of the references stored in every cast column, as a save would ([Syncing](#syncing)), without saving the models and without model events or global scopes, for the models given by `--model` (repeatable), or for those of `app/Models` and of `JsonReferencesRewriteCommand::discoverUsing()`, as the rewrite command.
+- Each row is planned first ([Planning a sync](#planning-a-sync)), and synced, in a transaction, only when its plan changes something, or has a relation it can't compare. **A second run changes nothing.**
+- The relations a `JsonData::syncUsing()` callback syncs go through it, as on a save: laravel-folklore's media go into the mediatheque's usage graph under the `json` handle. Such a relation is compared only when the callback is given with a reader of what it has synced ([Hooks](#hooks)); otherwise it is synced on every run, and reported as not compared.
+- It reports, by model, the rows read, the rows changed, the keys attached and detached, the rows synced by callbacks that can't be compared, and the references that don't resolve. With `-v`, it lists each change and each reference that doesn't resolve, with its row, attribute and path.
+- `--dry-run` plans and reports, and writes nothing. It works in chunks (`--chunk`, 500 rows).
+
 ## Media references and repositories
 
 Both are laravel-folklore's, on top of this package:
@@ -454,8 +486,8 @@ What the package doesn't know, an application or a package sets once, in a servi
 |---|---|---|
 | `JsonData::declareUsing(fn (Model $model, string $attribute, mixed $value, array $attributes): ?array)` | The declarations of a column without a schema (an attribute whose `jsonDataSchema()` returns `null`, or a model without one): `references` and `columns`, as [above](#declaring-paths). The first callback that returns an array wins | Its 1.x declarations and macros |
 | `JsonData::unwrapUsing(fn (object $value, ?JsonReference $target): mixed)` | A value that isn't a model, to turn into the model or the identifier it stands for. Returns the value unchanged when it doesn't know it | Its entities (`HasModel`, `ToEntity`, `Entity`) |
-| `JsonData::syncUsing(fn (Model $model, string $relationName, Relation $relation, array $ids): bool)` | The relation of a model and the keys of the referenced models. Returns true when it synced them, instead of the cast | The mediatheque's usage graph, under the `json` handle |
-| `JsonReferencesRewriteCommand::discoverUsing(fn (): iterable)` | Model classes that the rewrite command looks at by default | Its pages and blocks |
+| `JsonData::syncUsing(fn (Model $model, string $relationName, Relation $relation, array $ids): bool, ?fn (Model $model, string $relationName, Relation $relation): ?array)` | The relation of a model and the keys of the referenced models. Returns true when it synced them, instead of the cast. The second callback, optional, returns the keys it has synced for a relation, or `null` when it doesn't sync it, so that a sync can be planned ([Planning a sync](#planning-a-sync)) | The mediatheque's usage graph, under the `json` handle |
+| `JsonReferencesRewriteCommand::discoverUsing(fn (): iterable)` | Model classes that the rewrite and sync commands look at by default | Its pages and blocks |
 | A `LocaleResolver` bound in the container | The locales of translatable nodes ([Locales](#locales)) | `site.locales` |
 
 `JsonData::flush()` forgets the registry and the hooks, for tests.

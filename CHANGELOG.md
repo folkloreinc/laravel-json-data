@@ -6,6 +6,20 @@ The package is released in pre-releases, tagged `v1.0.0-alpha.N`, then `beta.N` 
 
 ## [Unreleased]
 
+### Added
+
+- `php artisan json-data:sync-references [--model=…] [--chunk=500] [--dry-run]` syncs the relations of the references of stored rows, as a save would, without saving the models and without model events, for rows written by imports, `saveQuietly()` or SQL ([#5](https://github.com/folkloreinc/laravel-json-data/issues/5)). It syncs a row only when its plan changes something, so a second run changes nothing, and reports the rows changed, the keys attached and detached, and the references that don't resolve (listed with `-v`). It finds its models as the rewrite command does, `JsonReferencesRewriteCommand::discoverUsing()` included.
+- `JsonDataCast::syncRelations($model, $only, pretend: true)` plans the sync without writing: by relation, the keys it holds (`current`), those to `attach`, `detach` and `delete`, whether it would change (`changed`, `null` when it can't tell) and the references that don't resolve (`unresolved`).
+- `JsonData::syncUsing()` takes an optional second callback, which returns the keys the first one has synced for a relation, or `null` when it doesn't sync it. Without it, a plan can't compare the relations such a callback may sync, and the command syncs them on every run.
+
+### Changed
+
+- The sync of a relation leaves out the references whose model isn't found through the related model's query, global scopes included, whatever the column of their key. A reference by the related model's key (`medias://999`) was synced without being looked up, which wrote a pivot row to a row that doesn't exist, or failed on a foreign key. The reference stays in the JSON, and `json-data:sync-references` reports it ([#5](https://github.com/folkloreinc/laravel-json-data/issues/5)).
+
+### Fixed
+
+- A relation declared at several paths takes the options of all its declarations, the first one winning, instead of those of its last declaration only: a `sync` callable or `delete` given at one path was ignored when another path of the relation came after it ([#18](https://github.com/folkloreinc/laravel-json-data/issues/18)).
+
 ## [1.0.0-alpha.2] - 2026-10-23
 
 The schema of JSON columns, first slice ([laravel-folklore's decision 0020](https://github.com/folkloreinc/laravel-folklore/pull/106), [#7](https://github.com/folkloreinc/laravel-json-data/issues/7)), and the package's commands under `json-data:`.
