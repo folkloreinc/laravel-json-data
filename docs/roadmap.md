@@ -27,13 +27,13 @@ The behaviour of `laravel-folklore` 2.0.0-alpha.3, in its own package ([laravel-
 - [x] Reference paths with a key and no Eloquent relation (#4)
 - [x] Commands named under `json-data:` ([decisions/0022](decisions/0022-command-names.md), #9)
 
-## Syncing stored rows (next)
+## Syncing stored rows (1.0.0-alpha.3)
 
-- [ ] `json-data:sync-references`: sync the relations of stored references, as a save would, for rows written without model events (imports, `saveQuietly()`, SQL, immutable rows, upgraded sites), with `--model`, `--chunk` and `--dry-run` ([#5](https://github.com/folkloreinc/laravel-json-data/issues/5)). Needed before Niche's first import, since the tables are indexes of the JSON
+- [x] `json-data:sync-references`: sync the relations of stored references, as a save would, for rows written without model events (imports, `saveQuietly()`, SQL, immutable rows, upgraded sites), with `--model`, `--chunk` and `--dry-run` ([#5](https://github.com/folkloreinc/laravel-json-data/issues/5)). Needed before Niche's first import, since the tables are indexes of the JSON
 
 ## Validation rules
 
-- [ ] `Json::rules($model, $attribute)`: the schema compiled into Laravel validation rules on the flat input keys (`required()`, `nullable()`, `min()`, `max()`, `pattern()`, types, enums, references, nested lists and objects), for form requests. Laravel rules only, with no dependency (decided on 2026-10-23) ([#15](https://github.com/folkloreinc/laravel-json-data/issues/15), from [#6](https://github.com/folkloreinc/laravel-json-data/issues/6))
+- [x] `Json::rules($model, $attribute)`: the schema compiled into Laravel validation rules on the flat input keys (`required()`, `nullable()`, `min()`, `max()`, `pattern()`, types, enums, references, nested lists and objects), for form requests. Laravel rules only, with no dependency (decided on 2026-10-23) ([#15](https://github.com/folkloreinc/laravel-json-data/issues/15), from [#6](https://github.com/folkloreinc/laravel-json-data/issues/6)) (1.0.0-alpha.3)
 - [ ] Validating on save, opt-in (`validatesOnSave()`) ([#16](https://github.com/folkloreinc/laravel-json-data/issues/16))
 
 ## JSON Schema export

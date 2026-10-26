@@ -6,7 +6,13 @@ The package is released in pre-releases, tagged `v1.0.0-alpha.N`, then `beta.N` 
 
 ## [Unreleased]
 
+## [1.0.0-alpha.3] - 2026-10-26
+
 Syncing stored rows ([#5](https://github.com/folkloreinc/laravel-json-data/issues/5)), and the schema of JSON columns, second slice: validation rules ([#15](https://github.com/folkloreinc/laravel-json-data/issues/15), from [#6](https://github.com/folkloreinc/laravel-json-data/issues/6)).
+
+### Breaking changes
+
+- The sync of a relation leaves out the references whose model isn't found through the related model's query, global scopes included, whatever the column of their key. A reference by the related model's key (`medias://999`) was synced without being looked up, which wrote a pivot row to a row that doesn't exist, or failed on a foreign key. A soft-deleted row, or one that a tenant scope hides, is detached on the next sync. The reference stays in the JSON, and `json-data:sync-references` reports it ([#5](https://github.com/folkloreinc/laravel-json-data/issues/5)).
 
 ### Added
 
@@ -16,10 +22,6 @@ Syncing stored rows ([#5](https://github.com/folkloreinc/laravel-json-data/issue
 - `Json::rules(Model $model, ?string $attribute = null)`: the schema of a JSON attribute, or of every attribute that has one, compiled into Laravel validation rules on the keys of the flat input that `JsonData::fill()` reads, for form requests. Types, `min()`, `max()`, `pattern()`, enums, `required()` (which only refuses an empty value on a stored model, and for a node with a default), `nullable()`, nested objects (`array:` under `additional(false)`), lists, maps and the `input()` names.
 - The rule objects `Schema\Rules\Reference`, which checks that a reference, a model or an identifier given to a reference node resolves through its handler and is allowed, and `Schema\Rules\Translatable`, which takes a string for the default locale or an object keyed by the locales.
 - `illuminate/validation` is required, for `Rule::enum()` and the rule objects.
-
-### Changed
-
-- The sync of a relation leaves out the references whose model isn't found through the related model's query, global scopes included, whatever the column of their key. A reference by the related model's key (`medias://999`) was synced without being looked up, which wrote a pivot row to a row that doesn't exist, or failed on a foreign key. The reference stays in the JSON, and `json-data:sync-references` reports it ([#5](https://github.com/folkloreinc/laravel-json-data/issues/5)).
 
 ### Fixed
 
@@ -71,6 +73,7 @@ The JSON data of `folklore/laravel-folklore` 2.0.0-alpha.3, in its own package (
 
 - `JsonDataCast::MEDIAS_HANDLE`, kept for the code that read it in laravel-folklore. Removed in 2.0.
 
-[Unreleased]: https://github.com/folkloreinc/laravel-json-data/compare/v1.0.0-alpha.2...v1.x
+[Unreleased]: https://github.com/folkloreinc/laravel-json-data/compare/v1.0.0-alpha.3...v1.x
+[1.0.0-alpha.3]: https://github.com/folkloreinc/laravel-json-data/compare/v1.0.0-alpha.2...v1.0.0-alpha.3
 [1.0.0-alpha.2]: https://github.com/folkloreinc/laravel-json-data/compare/v1.0.0-alpha.1...v1.0.0-alpha.2
 [1.0.0-alpha.1]: https://github.com/folkloreinc/laravel-json-data/releases/tag/v1.0.0-alpha.1
