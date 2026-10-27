@@ -4,8 +4,10 @@ namespace Folklore\JsonData\Tests\Feature;
 
 use Folklore\JsonData\JsonData;
 use Folklore\JsonData\JsonDataCast;
+use Folklore\JsonData\Tests\Feature\Fixtures\CountedBlock;
 use Folklore\JsonData\Tests\Feature\Fixtures\Game;
 use Folklore\JsonData\Tests\Feature\Fixtures\Prize;
+use Folklore\JsonData\Tests\Feature\Fixtures\RecursiveGame;
 use Folklore\JsonData\Tests\Feature\Fixtures\Wrapper;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -335,5 +337,27 @@ class JsonDataCastTest extends JsonDataTestCase
         $this->assertFalse($game->isDirty('data'));
         $game->save();
         $this->assertFalse($game->wasChanged());
+    }
+
+    public function test_the_patterns_visit_the_stored_value_and_not_the_models_put_in_it()
+    {
+        $media = $this->makeMedia();
+        $block = CountedBlock::create(['type' => 'text']);
+        $game = RecursiveGame::create(['handle' => 'recursive']);
+        $game->data = [
+            'blocks' => [$block],
+            'body' => ['content' => [['attrs' => ['src' => 'medias://'.$media->id]]]],
+        ];
+        $game->save();
+
+        CountedBlock::$arrays = 0;
+        $data = RecursiveGame::find($game->id)->data;
+
+        $this->assertTrue($data['blocks'][0]->is($block));
+        $this->assertTrue($data['body']['content'][0]['attrs']['src']->is($media));
+        // The block put in by `blocks.*` isn't walked as its array by `**`, which would have
+        // resolved the reference of its `cover` and set it on the model
+        $this->assertSame(0, CountedBlock::$arrays);
+        $this->assertArrayNotHasKey('cover', $data['blocks'][0]->getAttributes());
     }
 }
