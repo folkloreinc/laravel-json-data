@@ -6,6 +6,10 @@ The package is released in pre-releases, tagged `v1.0.0-alpha.N`, then `beta.N` 
 
 ## [Unreleased]
 
+### Fixed
+
+- Reading a JSON column flattens the stored value once, and each pattern visits those paths, instead of flattening the value again for each pattern. The models that an earlier pattern had put in the value were walked as their arrays by every later pattern, so a `**` pattern could resolve a reference found only in a model's array and set it on that model. Reading the data of a game with 60 questions, 240 references and 25 patterns went from 131 ms to 17 ms.
+
 ## [1.0.0-alpha.3] - 2026-10-26
 
 Syncing stored rows ([#5](https://github.com/folkloreinc/laravel-json-data/issues/5)), and the schema of JSON columns, second slice: validation rules ([#15](https://github.com/folkloreinc/laravel-json-data/issues/15), from [#6](https://github.com/folkloreinc/laravel-json-data/issues/6)).

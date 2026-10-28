@@ -79,7 +79,11 @@ class JsonDataCast implements CastsAttributes
         $relations = self::relations($model, $key, $value, $attributes);
         if (count($relations) > 0) {
             $raw = $attributes[$key] ?? null;
-            $resolved = self::resolveMappedReferences($model, $key, $raw, $value, $relations);
+            // The paths of the stored value, flattened once. Each pattern visits them, not the
+            // value as the previous patterns left it: a flatten would walk the models they put
+            // in it as their arrays, once per pattern
+            $paths = Paths::all($value);
+            $resolved = self::resolveMappedReferences($model, $key, $raw, $value, $relations, $paths);
 
             foreach ($relations as $relation) {
                 foreach (self::paths($relation) as $pattern) {
@@ -134,7 +138,7 @@ class JsonDataCast implements CastsAttributes
                         data_set($newValue, $path, self::resolveThroughRelation($model, $relationName, $relation, $entry->identifier));
 
                         return $newValue;
-                    });
+                    }, $paths);
                 }
             }
 
@@ -1002,9 +1006,10 @@ class JsonDataCast implements CastsAttributes
      * declared paths of a model's attribute, and memoizes them for its raw value.
      *
      * @param  list<array<string, mixed>>  $relations
+     * @param  list<int|string>|null  $paths  The paths of the value (Paths::all()), when already known
      * @return array<string, Model|null> By key, handler and identifier (memoKey())
      */
-    protected static function resolveMappedReferences(Model $model, string $key, mixed $raw, mixed $value, array $relations): array
+    protected static function resolveMappedReferences(Model $model, string $key, mixed $raw, mixed $value, array $relations, ?array $paths = null): array
     {
         $memo = self::resolvedStore()[$model][$key] ?? null;
         $resolved = ! is_null($memo) && $memo['raw'] === $raw ? $memo['models'] : [];
@@ -1015,7 +1020,7 @@ class JsonDataCast implements CastsAttributes
             foreach ($relations as $relation) {
                 $relationName = self::relationName($model, $relation, null, null);
                 foreach (self::paths($relation) as $pattern) {
-                    foreach (Paths::matching([$pattern], $value) as $path) {
+                    foreach (Paths::matching([$pattern], $value, $paths) as $path) {
                         $item = data_get($value, $path);
                         $entry = is_string($item) ? JsonData::parse($item) : null;
                         if (is_null($entry) || ! $entry->isMapped()) {

@@ -18,15 +18,17 @@ final class Paths
     /**
      * Calls the reducer for each path of the data that matches one of the patterns, in
      * turn, with the data so far, the path and its value in the data so far. The paths
-     * are those of the data it is given: a value the reducer adds isn't visited.
+     * are those of the data it is given, or the given paths (`Paths::all()` of the data
+     * before an earlier reduce): a value the reducer adds isn't visited.
      *
      * @param  array<array-key, string>  $patterns
      * @param  Closure(mixed, int|string, mixed): mixed  $reducer
+     * @param  list<int|string>|null  $paths
      * @return array<array-key, mixed>
      */
-    public static function reduce(array $patterns, mixed $data, Closure $reducer): array
+    public static function reduce(array $patterns, mixed $data, Closure $reducer, ?array $paths = null): array
     {
-        foreach (self::matching($patterns, $data) as $path) {
+        foreach (self::matching($patterns, $data, $paths) as $path) {
             $data = $reducer($data, $path, data_get($data, $path));
         }
 
@@ -39,14 +41,17 @@ final class Paths
      * joined with dots. Branches are paths too: `body.**` matches `body.content` and
      * `body.content.0`.
      *
+     * Given the paths of the data, it matches them instead of flattening the data again.
+     *
      * @param  array<array-key, string>  $patterns
+     * @param  list<int|string>|null  $paths
      * @return list<int|string>
      */
-    public static function matching(array $patterns, mixed $data): array
+    public static function matching(array $patterns, mixed $data, ?array $paths = null): array
     {
         $expressions = array_map(self::expression(...), array_values($patterns));
         $matching = [];
-        foreach (array_keys(self::flatten($data)) as $path) {
+        foreach ($paths ?? self::all($data) as $path) {
             foreach ($expressions as $expression) {
                 if (preg_match($expression, (string) $path) === 1) {
                     $matching[] = $path;
@@ -68,6 +73,18 @@ final class Paths
         $quoted = preg_quote(str_replace(['**', '*'], ['__full_wildcard__', '__wildcard__'], $pattern), '/');
 
         return '/^'.str_replace(['__full_wildcard__', '__wildcard__'], ['.*?', '[^\.]+'], $quoted).'$/';
+    }
+
+    /**
+     * Every path of the data, branches included, in the order of the data. Reducing the
+     * data with these paths keeps visiting the data as it was: the models a reducer puts
+     * in it aren't walked as their arrays by the next patterns.
+     *
+     * @return list<int|string>
+     */
+    public static function all(mixed $data): array
+    {
+        return array_keys(self::flatten($data));
     }
 
     /**

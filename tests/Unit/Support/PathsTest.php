@@ -5,6 +5,7 @@ namespace Folklore\JsonData\Tests\Unit\Support;
 use Folklore\JsonData\Support\Paths;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Support\Collection;
+use LogicException;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -159,5 +160,53 @@ class PathsTest extends TestCase
         $this->assertSame([], Paths::reduce(['image.*'], null, $reducer));
         $this->assertSame(['title' => 'Quiz'], Paths::reduce(['image.*'], ['title' => 'Quiz'], $reducer));
         $this->assertFalse($called);
+    }
+
+    public function test_all_lists_every_path_with_its_branches_in_order()
+    {
+        $this->assertSame(
+            ['image', 'image.fr', 'image.en', 'gallery', 'gallery.0', 'title'],
+            Paths::all(['image' => ['fr' => 'a', 'en' => 'b'], 'gallery' => ['c'], 'title' => 'd']),
+        );
+    }
+
+    public function test_given_paths_are_matched_instead_of_the_data()
+    {
+        $data = ['image' => new class implements Arrayable
+        {
+            public function toArray(): array
+            {
+                throw new LogicException('Walked');
+            }
+        }];
+
+        $this->assertSame(['image'], Paths::matching(['image'], $data, ['image']));
+    }
+
+    public function test_reducing_with_given_paths_visits_the_data_as_it_was()
+    {
+        $data = ['image' => 'medias://1', 'title' => 'Hello'];
+        $paths = Paths::all($data);
+        // A reducer puts in a value that a flatten would walk as its array
+        $data = Paths::reduce(['image'], $data, function ($data, $path) {
+            data_set($data, $path, new class implements Arrayable
+            {
+                public function toArray(): array
+                {
+                    throw new LogicException('Walked');
+                }
+            });
+
+            return $data;
+        }, $paths);
+
+        $visited = [];
+        Paths::reduce(['**'], $data, function ($data, $path) use (&$visited) {
+            $visited[] = $path;
+
+            return $data;
+        }, $paths);
+
+        $this->assertSame(['image', 'title'], $visited);
     }
 }
