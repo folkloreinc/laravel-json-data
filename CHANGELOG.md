@@ -6,6 +6,10 @@ The package is released in pre-releases, tagged `v1.0.0-alpha.N`, then `beta.N` 
 
 ## [Unreleased]
 
+## [1.0.0-alpha.4] - 2026-10-28
+
+Reading JSON columns, faster ([#20](https://github.com/folkloreinc/laravel-json-data/pull/20)).
+
 ### Fixed
 
 - Reading a JSON column flattens the stored value once, and each pattern visits those paths, instead of flattening the value again for each pattern. The models that an earlier pattern had put in the value were walked as their arrays by every later pattern, so a `**` pattern could resolve a reference found only in a model's array and set it on that model. Reading the data of a game with 60 questions, 240 references and 25 patterns went from 131 ms to 17 ms.
@@ -77,7 +81,8 @@ The JSON data of `folklore/laravel-folklore` 2.0.0-alpha.3, in its own package (
 
 - `JsonDataCast::MEDIAS_HANDLE`, kept for the code that read it in laravel-folklore. Removed in 2.0.
 
-[Unreleased]: https://github.com/folkloreinc/laravel-json-data/compare/v1.0.0-alpha.3...v1.x
+[Unreleased]: https://github.com/folkloreinc/laravel-json-data/compare/v1.0.0-alpha.4...v1.x
+[1.0.0-alpha.4]: https://github.com/folkloreinc/laravel-json-data/compare/v1.0.0-alpha.3...v1.0.0-alpha.4
 [1.0.0-alpha.3]: https://github.com/folkloreinc/laravel-json-data/compare/v1.0.0-alpha.2...v1.0.0-alpha.3
 [1.0.0-alpha.2]: https://github.com/folkloreinc/laravel-json-data/compare/v1.0.0-alpha.1...v1.0.0-alpha.2
 [1.0.0-alpha.1]: https://github.com/folkloreinc/laravel-json-data/releases/tag/v1.0.0-alpha.1
