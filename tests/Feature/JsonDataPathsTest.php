@@ -105,7 +105,8 @@ class JsonDataPathsTest extends JsonDataTestCase
 
         $raw = $this->rawData($offer);
         $this->assertSame('medias://'.$first->id, $raw['blocks'][0]['media']);
-        $this->assertSame(['media' => 'medias://'.$second->id, 'text' => 'Hello'], $raw['blocks'][0]['blocks'][0]);
+        // MySQL and jsonb reorder the keys of an object
+        $this->assertEquals(['media' => 'medias://'.$second->id, 'text' => 'Hello'], $raw['blocks'][0]['blocks'][0]);
         $this->assertSame(['fr' => ['medias://'.$card->id]], $raw['cards']);
         $this->assertEqualsCanonicalizing([$first->id, $second->id, $card->id], $offer->medias()->pluck('medias.id')->all());
 
@@ -125,7 +126,7 @@ class JsonDataPathsTest extends JsonDataTestCase
         JsonData::fill($offer, ['blocks' => [['media' => $media->id, 'anything' => true]]]);
         $offer->save();
 
-        $this->assertSame([['media' => 'medias://'.$media->id, 'anything' => true]], $this->rawData($offer)['blocks']);
+        $this->assertEquals([['media' => 'medias://'.$media->id, 'anything' => true]], $this->rawData($offer)['blocks']);
         $rules = Json::rules(new Offer, 'data');
         $this->assertSame([], $rules['blocks'] ?? []);
         $this->assertArrayNotHasKey('blocks.*.media', $rules);
