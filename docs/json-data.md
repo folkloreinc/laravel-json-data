@@ -103,10 +103,10 @@ class Offer extends Model implements HasJsonDataSchema
 | `Json::boolean()` | A boolean | |
 | `Json::date()`, `Json::datetime()` | An ISO 8601 string: `2026-10-23`, `2026-10-23T14:30:00+00:00` | A `DateTimeInterface` given is formatted |
 | `Json::enum(BackedEnum::class)`, `Json::enum([...])` | The enum's value | A case given is stored as its value |
-| `Json::object([...])` | An object | `additional(bool)`: whether keys outside the schema are kept |
-| `Json::list(node)` | An array | `min()`, `max()` (length) |
-| `Json::map(node)` | An object with any keys | `min()`, `max()` (number of keys) |
-| `Json::any()` | Any value, not looked into | For data the application doesn't describe yet |
+| `Json::object([...])` | An object | `additional(bool)`: whether keys outside the schema are kept; `paths()` |
+| `Json::list(node)` | An array | `min()`, `max()` (length); `paths()` |
+| `Json::map(node)` | An object with any keys | `min()`, `max()` (number of keys); `paths()` |
+| `Json::any()` | Any value, not looked into | For data the application doesn't describe yet; `paths()` |
 | `Json::reference(key)` | `{key}://{identifier}` | `relation()`, `using()`, `deletesUnreferenced()` |
 | `Json::relation(relation)` | `{key}://{identifier}`, with the key of the relation's related model | A reference without a key, as a 1.x declaration; `deletesUnreferenced()` |
 | `Json::document()` | A document (ProseMirror JSON…), as given | `references(...)` |
@@ -143,6 +143,24 @@ A schema compiles into the declarations of the [hook](#declaring-paths), so a co
   - **sync:** to the relation, as `Json::reference()->relation()`;
   - **validation:** the [rule](#validation-rules) checks the key that the node writes for the related model; for an unmapped one, it accepts a model of the related class, one of its ids, or a reference of the relation's name;
   - `translatable()` and `extract()` as on any reference node. `using()` is refused: the handler is the written key's, so map the key and use `Json::reference()->using()`.
+- **`paths([...])`**, on an object, a list, a map or `Json::any()`, declares reference nodes at paths relative to the node, without describing the structure in between, as a 1.x declaration names only the paths of its references ([#27](https://github.com/folkloreinc/laravel-json-data/issues/27)):
+
+  ```php
+  'blocks' => Json::any()->paths([
+      '*.media' => Json::media(),
+      '*.blocks.*.media' => Json::media(),
+      '*.blocks.*.blocks.*.media' => Json::media(),
+  ]),
+  // blocks.*.media, blocks.*.blocks.*.media, blocks.*.blocks.*.blocks.*.media
+
+  'cards' => Json::map(Json::media())->paths(['fr.*' => Json::media()]),
+  // cards.* and cards.fr.*
+  ```
+
+  - The nodes are reference nodes (`Json::reference()`, `Json::relation()`, laravel-folklore's `Json::media()`), with their options; a translatable one adds `.*`. `extract()` and `input()` are refused, as under a list or a map.
+  - A path doesn't describe the structure: it adds no input key to `JsonData::fill()` and no validation rule. The node it is chained on fills and validates as it does without it (`Json::any()`: as given, with no rules).
+  - Segments are property names or `*`, with no `**` (`Json::document()->references()` covers any depth). On an object, a path that starts with one of its properties is refused: declare it on that property.
+  - Use it when a full schema would describe levels the application doesn't otherwise need, such as blocks of blocks, or paths that aren't one tree (`cards.*` and `cards.fr.*`). A schema that describes the structure gets its validation rules and filling too.
 - **`deletesUnreferenced()`** on a node with a relation deletes, when the references are synced, the rows of the relation that the JSON no longer references: the `delete` option of a 1.x declaration, which it compiles to (`'uris' => Json::list(Json::relation('uris')->deletesUnreferenced())`) ([#26](https://github.com/folkloreinc/laravel-json-data/issues/26)). See [Syncing](#syncing).
 
 ### Filling
@@ -566,6 +584,7 @@ What the package doesn't know, an application or a package sets once, in a servi
 | `getJsonDataRelations()`, `getJsonDataColumnExtract()` | `jsonDataSchema()` | Kept in laravel-folklore, through the declarations hook, until its 3.0 |
 | `'credits.*.author' => 'authors'`: a relation, no key; unmapped keys through the relation | `Json::relation('authors')`, which compiles to the same declaration | — |
 | `['relation' => 'uris', 'delete' => true]`: delete the rows no longer referenced | `Json::relation('uris')->deletesUnreferenced()`; only on a relation that owns its rows | — |
+| Paths only, such as `'blocks.*.blocks.*.media' => 'medias'`, whatever the structure in between | `paths()` on `Json::any()`, an object, a list or a map | — |
 | One JSON column per repository (`$jsonAttributeName`) | laravel-folklore's `$jsonAttributes` | Kept, deprecated |
 | `$jsonAttributeFillable`, `$jsonAttributeExclude`: input keys into the column, in the base repository only; `'*'` stores every key that isn't fillable | `JsonData::fill()`, from the schema, for any code that saves the model; unknown keys refused under `additional(false)` | Kept in laravel-folklore for the models without a schema |
 | A fake relation with `sync => false` for a reference that isn't a relation | `Json::reference()` without a relation | — |
