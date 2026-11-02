@@ -97,6 +97,17 @@ class JsonReferenceTest extends TestCase
         $this->assertNull(JsonReference::to(ReferencedMedia::class)->by('uid')->identifierOf(new ReferencedMedia(['uid' => ''])));
     }
 
+    public function test_only_digits_can_identify_an_integer_key()
+    {
+        $byId = JsonReference::to(ReferencedMedia::class);
+
+        $this->assertTrue($byId->canIdentify('12'));
+        $this->assertFalse($byId->canIdentify('med_01J'));
+        $this->assertFalse($byId->canIdentify('https://example.com/12'));
+        $this->assertTrue($byId->by('uid')->canIdentify('med_01J'));
+        $this->assertTrue($byId->by('uid')->canIdentify('12'));
+    }
+
     public function test_targets_are_equal_by_model_column_and_handler()
     {
         $target = JsonReference::to(ReferencedMedia::class);

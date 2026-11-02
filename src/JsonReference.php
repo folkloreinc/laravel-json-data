@@ -112,6 +112,20 @@ final readonly class JsonReference
         return is_int($value) || (is_string($value) && $value !== '') ? (string) $value : null;
     }
 
+    /**
+     * Whether a string can be an identifier of the target's column: an integer key only
+     * has digits. Other strings, such as a uid or a URL, are not looked up there, which
+     * databases with types refuse.
+     */
+    public function canIdentify(string $identifier): bool
+    {
+        $model = new $this->model;
+
+        return $this->column() !== $model->getKeyName()
+            || ! in_array($model->getKeyType(), ['int', 'integer'], true)
+            || ctype_digit($identifier);
+    }
+
     public function equals(self $other): bool
     {
         return $this->model === $other->model

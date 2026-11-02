@@ -40,6 +40,16 @@ The behaviour of `laravel-folklore` 2.0.0-alpha.3, in its own package ([laravel-
 
 - [ ] `toJsonSchema()`: a standard JSON Schema (draft 2020-12) of a column, with `x-reference` and `x-translatable` extensions, for API specs and front-end types ([#17](https://github.com/folkloreinc/laravel-json-data/issues/17))
 
+## Migrating 1.x sites
+
+What sites on `laravel-folklore` 1.1 need to move their JSON data and declarations to 2.0, found while migrating urbania.media and two other 1.1 sites with `folklore:upgrade --schemas` ([laravel-folklore#151](https://github.com/folkloreinc/laravel-folklore/pull/151)).
+
+- [x] `json-data:rewrite-references --from-column=`: references whose identifiers are of another column than their key's, such as `media://12` by id where `media` is mapped by uid ([#23](https://github.com/folkloreinc/laravel-json-data/issues/23))
+- [ ] `JsonData::load()` with a depth: the references of the models that references resolve to, such as nested blocks ([#24](https://github.com/folkloreinc/laravel-json-data/issues/24))
+- [ ] `Json::relation()`: a reference node named by its relation, without a key, as a 1.x declaration ([#25](https://github.com/folkloreinc/laravel-json-data/issues/25))
+- [ ] `deletesUnreferenced()`: the `delete` option of 1.x on a reference node ([#26](https://github.com/folkloreinc/laravel-json-data/issues/26))
+- [ ] `paths()`: reference nodes at paths under a node, without describing its structure ([#27](https://github.com/folkloreinc/laravel-json-data/issues/27))
+
 ## Beta and release candidate
 
 - [ ] Public API frozen: the schema's nodes, the hooks, the commands; `laravel-folklore` 2 and the pilot on the beta

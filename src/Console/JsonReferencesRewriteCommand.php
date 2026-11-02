@@ -14,7 +14,9 @@ use Illuminate\Database\Eloquent\Model;
 
 /**
  * Rewrites the references of one key to another in the JSON attributes of models, such as
- * `medias://12` to `media://med_…` (docs/json-data.md, "Rewriting references").
+ * `medias://12` to `media://med_…`, or the references of a key whose identifiers are of
+ * another column, such as `media://12` by id to `media://med_…` by uid
+ * (docs/json-data.md, "Rewriting references").
  */
 class JsonReferencesRewriteCommand extends Command
 {
@@ -28,6 +30,7 @@ class JsonReferencesRewriteCommand extends Command
     protected $signature = 'json-data:rewrite-references
         {--from= : The key of the references to rewrite}
         {--to= : The key to write instead, mapped to the same model}
+        {--from-column= : The column that the identifiers of --from are of, when it is not the one --from is mapped by (--from=media --from-column=id --to=media for media://12)}
         {--model=* : A model to rewrite; by default, the models of app/Models, and those added with discoverUsing(), that cast a JSON attribute with JsonDataCast}
         {--chunk=500 : How many rows to read at a time}
         {--dry-run : Report what would change, without writing}';
@@ -82,8 +85,10 @@ class JsonReferencesRewriteCommand extends Command
     {
         $from = $this->option('from');
         $to = $this->option('to');
-        if (! is_string($from) || ! is_string($to) || $from === '' || $to === '' || $from === $to) {
-            $this->error('Give two different keys: --from=medias --to=media.');
+        $fromColumn = $this->option('from-column');
+        $fromColumn = is_string($fromColumn) && $fromColumn !== '' ? $fromColumn : null;
+        if (! is_string($from) || ! is_string($to) || $from === '' || $to === '' || ($from === $to && is_null($fromColumn))) {
+            $this->error('Give two different keys (--from=medias --to=media), or the column that the identifiers of the key are of (--from=media --from-column=id --to=media).');
 
             return self::FAILURE;
         }
@@ -102,16 +107,37 @@ class JsonReferencesRewriteCommand extends Command
 
             return self::FAILURE;
         }
+        // The identifiers of `from` are read by its mapped column, or by --from-column
+        $readTarget = is_null($fromColumn) ? $fromTarget : JsonReference::to($fromTarget->model)->by($fromColumn);
+        if (! is_null($fromColumn)) {
+            $model = new $fromTarget->model;
+            if (! $model->getConnection()->getSchemaBuilder()->hasColumn($model->getTable(), $fromColumn)) {
+                $this->error("[{$model->getTable()}] has no column [{$fromColumn}].");
+
+                return self::FAILURE;
+            }
+            if ($from === $to && $readTarget->column() === $toTarget->column()) {
+                $this->error("[{$to}] is mapped by [{$fromColumn}]: there is nothing to rewrite.");
+
+                return self::FAILURE;
+            }
+        }
 
         $dryRun = (bool) $this->option('dry-run');
         $chunk = max(1, (int) $this->option('chunk'));
         $rows = [];
         foreach ($this->models() as $class) {
-            [$changed, $rewritten, $unresolved] = $this->rewrite($class, $from, $fromTarget, $to, $toTarget, $chunk, $dryRun);
-            $rows[] = [$class, $changed, $rewritten, $unresolved];
+            [$changed, $rewritten, $unresolved, $skipped] = $this->rewrite($class, $from, $readTarget, $to, $toTarget, $chunk, $dryRun);
+            $rows[] = is_null($fromColumn)
+                ? [$class, $changed, $rewritten, $unresolved + $skipped]
+                : [$class, $changed, $rewritten, $unresolved, $skipped];
         }
 
-        $this->table(['Model', $dryRun ? 'Rows to change' : 'Rows changed', 'References', 'Unresolved, left as they are'], $rows);
+        $headers = ['Model', $dryRun ? 'Rows to change' : 'Rows changed', 'References', 'Unresolved, left as they are'];
+        if (! is_null($fromColumn)) {
+            $headers[] = "Not of [{$fromColumn}], left as they are";
+        }
+        $this->table($headers, $rows);
         if ($dryRun) {
             $this->info('Dry run: nothing was written.');
         }
@@ -120,16 +146,19 @@ class JsonReferencesRewriteCommand extends Command
     }
 
     /**
-     * Rewrites the references of one model class, in chunks, without model events.
+     * Rewrites the references of one model class, in chunks, without model events. The
+     * identifiers of `from` are read by the column of `$fromTarget`; those that can't be
+     * of it, such as a uid where it is an integer key, are skipped.
      *
      * @param  class-string<Model>  $class
-     * @return array{int, int, int}
+     * @return array{int, int, int, int} The rows changed, and the references rewritten, unresolved and skipped.
      */
     protected function rewrite(string $class, string $from, JsonReference $fromTarget, string $to, JsonReference $toTarget, int $chunk, bool $dryRun): array
     {
         $changed = 0;
         $rewritten = 0;
         $unresolved = 0;
+        $skipped = 0;
 
         (new $class)->newQueryWithoutScopes()->chunkById($chunk, function (Collection $models) use (
             $from,
@@ -139,13 +168,25 @@ class JsonReferencesRewriteCommand extends Command
             $dryRun,
             &$changed,
             &$rewritten,
-            &$unresolved
+            &$unresolved,
+            &$skipped
         ) {
             /** @var array<int, array{Model, list<JsonReferenceEntry>}> $owners */
             $owners = [];
             $identifiers = [];
             foreach ($models as $model) {
-                $entries = JsonDataCast::references($model)->filter(fn (JsonReferenceEntry $entry) => $entry->key === $from)->values()->all();
+                $entries = [];
+                foreach (JsonDataCast::references($model) as $entry) {
+                    if ($entry->key !== $from) {
+                        continue;
+                    }
+                    if (! $fromTarget->canIdentify($entry->identifier)) {
+                        $skipped++;
+
+                        continue;
+                    }
+                    $entries[] = $entry;
+                }
                 if (count($entries) > 0) {
                     $owners[] = [$model, $entries];
                     array_push($identifiers, ...array_map(fn (JsonReferenceEntry $entry) => $entry->identifier, $entries));
@@ -186,7 +227,7 @@ class JsonReferencesRewriteCommand extends Command
             }
         });
 
-        return [$changed, $rewritten, $unresolved];
+        return [$changed, $rewritten, $unresolved, $skipped];
     }
 
     /**

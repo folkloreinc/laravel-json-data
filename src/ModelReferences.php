@@ -99,11 +99,7 @@ class ModelReferences implements ReferenceHandler
      */
     protected function isIdentifierOf(JsonReference $target, string $identifier): bool
     {
-        $model = new $target->model;
-
-        return $target->column() !== $model->getKeyName()
-            || ! in_array($model->getKeyType(), ['int', 'integer'], true)
-            || ctype_digit($identifier);
+        return $target->canIdentify($identifier);
     }
 
     /**

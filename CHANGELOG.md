@@ -6,6 +6,15 @@ The package is released in pre-releases, tagged `v1.0.0-alpha.N`, then `beta.N` 
 
 ## [Unreleased]
 
+### Added
+
+- `json-data:rewrite-references --from-column=`: reads the identifiers of `--from` by another column than the one it is mapped by, so that `--from=media --from-column=id --to=media` rewrites `media://12` written by id to `media://med_…` by uid. Identifiers that can't be of that column are left as they are and reported apart ([#23](https://github.com/folkloreinc/laravel-json-data/issues/23)).
+- `JsonReference::canIdentify()`: whether a string can be an identifier of a target's column (only digits for an integer key).
+
+### Fixed
+
+- `json-data:rewrite-references` no longer looks up identifiers that can't be of the column of `--from`, such as a uid where it is an integer key, which PostgreSQL refuses; they are reported as unresolved.
+
 ## [1.0.0-alpha.4] - 2026-10-28
 
 Reading JSON columns, faster ([#20](https://github.com/folkloreinc/laravel-json-data/pull/20)).

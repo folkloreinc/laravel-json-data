@@ -489,6 +489,7 @@ php artisan json-data:rewrite-references --from=medias --to=media --dry-run
 - Rewrites every reference with the key `--from` to the key `--to`, at the declared paths of every cast column of the models given by `--model` (repeatable), or of the models of `app/Models` and those added with `JsonReferencesRewriteCommand::discoverUsing()` (laravel-folklore adds its pages and blocks).
 - Both keys must be mapped to the same model. Identifiers are converted in batches through the model (`medias://12` → `media://med_…` reads the `uid` of media 12).
 - References that don't resolve are left as they are and reported.
+- `--from-column` reads the identifiers of `--from` by another column than the one it is mapped by, for references a site wrote itself with a key it maps differently today: `--from=media --from-column=id --to=media` rewrites `media://12` (media 12, by id) to `media://med_…` (by uid). `--from` and `--to` may then be the same key. Only the identifiers that can be of that column are read (digits, for an integer key): the others, such as the `media://med_…` already written, are left as they are and reported apart ([#23](https://github.com/folkloreinc/laravel-json-data/issues/23)).
 - `--dry-run` reports what would change. The command works in chunks (`--chunk`, 500 rows), without model events or global scopes, and can be run again.
 - It was `folklore:json-references:rewrite` in laravel-folklore and in this package's alpha 1 ([decisions/0022](decisions/0022-command-names.md)).
 

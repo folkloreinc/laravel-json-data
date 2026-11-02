@@ -207,6 +207,52 @@ class JsonDataBatchesTest extends JsonDataTestCase
         $this->assertSame('prize://second', $images['logo']);
     }
 
+    /**
+     * A site that wrote `prize://12` by id where `prize` is mapped by handle (#23).
+     */
+    public function test_the_rewrite_command_reads_the_identifiers_of_a_key_by_another_column()
+    {
+        JsonData::map(['prize' => [Prize::class, 'handle']]);
+        $first = $this->prize('first');
+        $second = $this->prize('second');
+        $game = $this->storedGame(
+            ['prizes' => [['prize' => 'prize://'.$first->id], ['prize' => 'prize://second'], ['prize' => 'prize://999']]],
+            ['logo' => 'prize://'.$second->id],
+        );
+        $arguments = ['--from' => 'prize', '--from-column' => 'id', '--to' => 'prize', '--model' => [BrandGame::class]];
+
+        $this->artisan('json-data:rewrite-references', [...$arguments, '--dry-run' => true])
+            ->expectsTable(
+                ['Model', 'Rows to change', 'References', 'Unresolved, left as they are', 'Not of [id], left as they are'],
+                [[BrandGame::class, 1, 2, 1, 1]],
+            )
+            ->assertSuccessful();
+        $this->assertSame('prize://'.$first->id, json_decode((string) DB::table('games')->where('id', $game->id)->value('data'), true)['prizes'][0]['prize']);
+
+        $this->artisan('json-data:rewrite-references', $arguments)->assertSuccessful();
+
+        $data = json_decode((string) DB::table('games')->where('id', $game->id)->value('data'), true);
+        $images = json_decode((string) DB::table('games')->where('id', $game->id)->value('images'), true);
+        $this->assertSame(['prize://first', 'prize://second', 'prize://999'], array_column($data['prizes'], 'prize'));
+        $this->assertSame('prize://second', $images['logo']);
+        $this->assertSame('first', BrandGame::with('prizes')->find($game->id)?->data['prizes'][0]['prize']->handle);
+    }
+
+    public function test_the_rewrite_command_needs_another_column_to_rewrite_a_key_to_itself()
+    {
+        JsonData::map(['prize' => [Prize::class, 'handle']]);
+
+        $this->artisan('json-data:rewrite-references', ['--from' => 'prize', '--to' => 'prize'])
+            ->expectsOutputToContain('--from-column=id')
+            ->assertFailed();
+        $this->artisan('json-data:rewrite-references', ['--from' => 'prize', '--from-column' => 'handle', '--to' => 'prize'])
+            ->expectsOutputToContain('nothing to rewrite')
+            ->assertFailed();
+        $this->artisan('json-data:rewrite-references', ['--from' => 'prize', '--from-column' => 'missing', '--to' => 'prize'])
+            ->expectsOutputToContain('has no column [missing]')
+            ->assertFailed();
+    }
+
     public function test_the_rewrite_command_rewrites_the_models_added_with_discover_using()
     {
         JsonData::map(['prize' => [Prize::class, 'handle'], 'prizeid' => Prize::class]);
