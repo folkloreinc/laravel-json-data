@@ -376,6 +376,16 @@ $repository->withJsonReferences()->get($query);  // in a repository
 
 A key that isn't mapped resolves as in 1.x, through the owner's relation of the same name, so only the rows attached to the owner resolve ([decisions/0016](decisions/0016-scope-of-unmapped-keys.md)). A mapped key resolves by its column through its handler, and `allows()` scopes it.
 
+The models that the references resolve to have their own JSON data, which the load doesn't resolve: in pages that hold blocks that hold blocks and media, each block would resolve its own references when its data is read, one query per block and key. A depth loads them too, one level at a time ([#24](https://github.com/folkloreinc/laravel-json-data/issues/24)):
+
+```php
+JsonData::load($pages, depth: 3);  // the pages' blocks, the blocks' blocks, and their media
+```
+
+- Each level loads the models that the previous one resolved to, every JSON attribute of theirs (the attributes given apply to the first level only), with one query per key for the whole level, and the relations of unmapped keys eager-loaded on it.
+- A model already loaded by an earlier level isn't loaded again, so a reference back to a parent doesn't loop. A model reached through two paths is two instances, both loaded.
+- `depth: 1`, the default, loads the given models only. 1.x sites eager-loaded those levels through their pivots (`with('blocks.blocks.medias')`); the depth replaces that.
+
 ## Handlers
 
 A handler is attached to a **key**, not to a relation name: preparing and resolving a value depend on what it points to, while syncing depends on the kind of relation, which the cast handles.

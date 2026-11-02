@@ -324,10 +324,79 @@ class JsonDataCast implements CastsAttributes
      * eager-loaded on the collection. Each model's value is then read without a query
      * (docs/json-data.md, "Batch resolution").
      *
+     * With a depth above 1, the models that the references resolved to are loaded in turn,
+     * every JSON attribute of theirs, one level at a time: a level's references resolve
+     * together, with one query per key for the whole level. A model already loaded by an
+     * earlier level isn't loaded again.
+     *
      * @param  iterable<mixed>  $models
-     * @param  list<string>|null  $attributes  The JSON attributes, or every one.
+     * @param  list<string>|null  $attributes  The JSON attributes of the given models, or every one.
+     * @param  int  $depth  How many levels of resolved models to load: 1, the given models only.
      */
-    public static function load(iterable $models, ?array $attributes = null): void
+    public static function load(iterable $models, ?array $attributes = null, int $depth = 1): void
+    {
+        if ($depth < 1) {
+            throw new InvalidArgumentException("The depth of JsonData::load() is at least 1, [{$depth}] given.");
+        }
+
+        /** @var array<int, true> $loaded */
+        $loaded = [];
+        $level = $models;
+        for ($remaining = $depth; $remaining > 0; $remaining--) {
+            $batch = [];
+            foreach ($level as $model) {
+                if ($model instanceof Model && ! isset($loaded[spl_object_id($model)])) {
+                    $loaded[spl_object_id($model)] = true;
+                    $batch[] = $model;
+                }
+            }
+            if (count($batch) === 0) {
+                return;
+            }
+            self::loadLevel($batch, $attributes);
+            if ($remaining > 1) {
+                $level = self::resolvedModels($batch, $attributes);
+                $attributes = null;
+            }
+        }
+    }
+
+    /**
+     * The models that the JSON attributes of the given models resolve to, once each. The
+     * values are read after `loadLevel()`, so without a query.
+     *
+     * @param  list<Model>  $models
+     * @param  list<string>|null  $attributes
+     * @return list<Model>
+     */
+    protected static function resolvedModels(array $models, ?array $attributes): array
+    {
+        $resolved = [];
+        $collect = function (mixed $value) use (&$collect, &$resolved): void {
+            if ($value instanceof Model) {
+                $resolved[spl_object_id($value)] = $value;
+            } elseif (is_array($value)) {
+                foreach ($value as $item) {
+                    $collect($item);
+                }
+            }
+        };
+        foreach ($models as $model) {
+            foreach (self::castAttributes($model, $attributes) as $attribute) {
+                $collect($model->getAttribute($attribute));
+            }
+        }
+
+        return array_values($resolved);
+    }
+
+    /**
+     * Resolves the references of one level of models together (`load()`).
+     *
+     * @param  list<Model>  $models
+     * @param  list<string>|null  $attributes
+     */
+    protected static function loadLevel(array $models, ?array $attributes): void
     {
         /** @var array<string, array{entry: JsonReferenceEntry, relation: array<string, mixed>, relationName: string|null, ownerClass: class-string<Model>, attribute: string, identifiers: list<string>, owners: list<array{Model, mixed, string}>}> $groups */
         $groups = [];
@@ -335,9 +404,6 @@ class JsonDataCast implements CastsAttributes
         $eager = [];
 
         foreach ($models as $model) {
-            if (! $model instanceof Model) {
-                continue;
-            }
             foreach (self::castAttributes($model, $attributes) as $attribute) {
                 $raw = $model->getAttributes()[$attribute] ?? null;
                 foreach (self::storedReferences($model, $attribute) as [$entry, $relation]) {

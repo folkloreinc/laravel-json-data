@@ -177,14 +177,17 @@ final class JsonData
 
     /**
      * Resolves the references of a collection of models together: one query per key for
-     * the whole collection, and the relations of unmapped keys eager-loaded.
+     * the whole collection, and the relations of unmapped keys eager-loaded. With a depth,
+     * the models they resolve to are loaded in turn, one level at a time, such as the
+     * blocks of a page's blocks and their media (`depth: 3`).
      *
      * @param  iterable<mixed>  $models
-     * @param  list<string>|null  $attributes  The JSON attributes, or every one.
+     * @param  list<string>|null  $attributes  The JSON attributes of the given models, or every one.
+     * @param  int  $depth  How many levels of resolved models to load: 1, the given models only.
      */
-    public static function load(iterable $models, ?array $attributes = null): void
+    public static function load(iterable $models, ?array $attributes = null, int $depth = 1): void
     {
-        JsonDataCast::load($models, $attributes);
+        JsonDataCast::load($models, $attributes, $depth);
     }
 
     /**
