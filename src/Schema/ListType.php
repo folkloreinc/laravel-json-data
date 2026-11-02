@@ -3,6 +3,7 @@
 namespace Folklore\JsonData\Schema;
 
 use Folklore\JsonData\Schema\Concerns\HasBounds;
+use Folklore\JsonData\Schema\Concerns\HasPaths;
 
 /**
  * A list of values of one node, stored as a JSON array. `min()` and `max()` bound its
@@ -10,7 +11,7 @@ use Folklore\JsonData\Schema\Concerns\HasBounds;
  */
 class ListType extends Type
 {
-    use HasBounds;
+    use HasBounds, HasPaths;
 
     public function __construct(
         protected Type $of,

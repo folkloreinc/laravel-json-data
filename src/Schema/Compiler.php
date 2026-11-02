@@ -72,6 +72,30 @@ final class Compiler
             $node instanceof DocumentType => $this->walkDocument($node, $segments),
             default => null,
         };
+
+        if ($node instanceof ObjectType || $node instanceof ListType || $node instanceof MapType || $node instanceof AnyType) {
+            foreach ($node->getPaths() as $path => $reference) {
+                $this->walkPath($reference, [...$segments, ...explode('.', $path)]);
+            }
+        }
+    }
+
+    /**
+     * A reference node of `paths()`, at its path under the node it is chained on.
+     *
+     * @param  list<string>  $segments
+     */
+    private function walkPath(ReferenceType $node, array $segments): void
+    {
+        $path = implode('.', $segments);
+        if (! is_null($node->getExtract())) {
+            throw InvalidJsonData::invalidSchema("A node of paths() can't be extracted into a column: [{$path}].");
+        }
+        if (! is_null($node->getInput())) {
+            throw InvalidJsonData::invalidSchema("A node of paths() can't be read from an input key: [{$path}].");
+        }
+
+        $this->references[] = $this->reference($node, $node->isTranslatable() ? $path.'.*' : $path);
     }
 
     /**

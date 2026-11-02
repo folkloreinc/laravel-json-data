@@ -48,7 +48,7 @@ What sites on `laravel-folklore` 1.1 need to move their JSON data and declaratio
 - [x] `JsonData::load()` with a depth: the references of the models that references resolve to, such as nested blocks ([#24](https://github.com/folkloreinc/laravel-json-data/issues/24))
 - [x] `Json::relation()`: a reference node named by its relation, without a key, as a 1.x declaration ([#25](https://github.com/folkloreinc/laravel-json-data/issues/25))
 - [x] `deletesUnreferenced()`: the `delete` option of 1.x on a reference node ([#26](https://github.com/folkloreinc/laravel-json-data/issues/26))
-- [ ] `paths()`: reference nodes at paths under a node, without describing its structure ([#27](https://github.com/folkloreinc/laravel-json-data/issues/27))
+- [x] `paths()`: reference nodes at paths under a node, without describing its structure ([#27](https://github.com/folkloreinc/laravel-json-data/issues/27))
 
 ## Beta and release candidate
 

@@ -4,6 +4,7 @@ namespace Folklore\JsonData\Schema;
 
 use Folklore\JsonData\Exceptions\InvalidJsonData;
 use Folklore\JsonData\JsonData;
+use Folklore\JsonData\Schema\Concerns\HasPaths;
 
 /**
  * An object with the given properties, stored as a JSON object. The root of a column's
@@ -11,6 +12,8 @@ use Folklore\JsonData\JsonData;
  */
 class ObjectType extends Type
 {
+    use HasPaths;
+
     protected ?bool $additional = null;
 
     /**
@@ -54,5 +57,17 @@ class ObjectType extends Type
     public function getProperty(string $name): ?Type
     {
         return $this->properties[$name] ?? null;
+    }
+
+    /**
+     * A path under one of the object's properties is declared on that property.
+     *
+     * @param  list<string>  $segments
+     */
+    protected function checkPath(array $segments, string $path): void
+    {
+        if (array_key_exists($segments[0], $this->properties)) {
+            throw InvalidJsonData::invalidSchema("[{$path}] starts with the property [{$segments[0]}]: declare it on that property.");
+        }
     }
 }
