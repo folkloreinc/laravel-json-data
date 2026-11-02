@@ -46,7 +46,7 @@ What sites on `laravel-folklore` 1.1 need to move their JSON data and declaratio
 
 - [x] `json-data:rewrite-references --from-column=`: references whose identifiers are of another column than their key's, such as `media://12` by id where `media` is mapped by uid ([#23](https://github.com/folkloreinc/laravel-json-data/issues/23))
 - [x] `JsonData::load()` with a depth: the references of the models that references resolve to, such as nested blocks ([#24](https://github.com/folkloreinc/laravel-json-data/issues/24))
-- [ ] `Json::relation()`: a reference node named by its relation, without a key, as a 1.x declaration ([#25](https://github.com/folkloreinc/laravel-json-data/issues/25))
+- [x] `Json::relation()`: a reference node named by its relation, without a key, as a 1.x declaration ([#25](https://github.com/folkloreinc/laravel-json-data/issues/25))
 - [ ] `deletesUnreferenced()`: the `delete` option of 1.x on a reference node ([#26](https://github.com/folkloreinc/laravel-json-data/issues/26))
 - [ ] `paths()`: reference nodes at paths under a node, without describing its structure ([#27](https://github.com/folkloreinc/laravel-json-data/issues/27))
 

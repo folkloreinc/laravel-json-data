@@ -1194,6 +1194,20 @@ class JsonDataCast implements CastsAttributes
     }
 
     /**
+     * The key that a path declared with a relation and no key writes, and its target: the
+     * first key mapped to the related model, else the relation's name, as `Json::relation()`
+     * writes. Throws as a write does, under `enforceMap()`, for an unmapped related model.
+     *
+     * @return array{string, JsonReference|null}
+     *
+     * @internal
+     */
+    public static function writeTargetFor(Model $model, string $relationName): array
+    {
+        return self::writeTarget($model, ['relation' => $relationName], $relationName);
+    }
+
+    /**
      * The key a relation writes and its target.
      *
      * @param  array<string, mixed>  $relation

@@ -26,6 +26,9 @@ class DocumentType extends Type
             if ($reference->isTranslatable()) {
                 throw InvalidJsonData::invalidSchema('The references of a document are not translatable.');
             }
+            if (is_null($reference->getKey())) {
+                throw InvalidJsonData::invalidSchema('The references of a document have a key: at any depth, only mapped keys are references.');
+            }
             $this->references[] = $reference;
         }
 
