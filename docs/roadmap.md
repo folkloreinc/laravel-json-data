@@ -40,7 +40,7 @@ The behaviour of `laravel-folklore` 2.0.0-alpha.3, in its own package ([laravel-
 
 - [ ] `toJsonSchema()`: a standard JSON Schema (draft 2020-12) of a column, with `x-reference` and `x-translatable` extensions, for API specs and front-end types ([#17](https://github.com/folkloreinc/laravel-json-data/issues/17))
 
-## Migrating 1.x sites
+## Migrating 1.x sites (1.0.0-alpha.5)
 
 What sites on `laravel-folklore` 1.1 need to move their JSON data and declarations to 2.0, found while migrating urbania.media and two other 1.1 sites with `folklore:upgrade --schemas` ([laravel-folklore#151](https://github.com/folkloreinc/laravel-folklore/pull/151)).
 
