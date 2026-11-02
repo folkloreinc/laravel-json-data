@@ -108,6 +108,7 @@ class Offer extends Model implements HasJsonDataSchema
 | `Json::map(node)` | An object with any keys | `min()`, `max()` (number of keys) |
 | `Json::any()` | Any value, not looked into | For data the application doesn't describe yet |
 | `Json::reference(key)` | `{key}://{identifier}` | `relation()`, `using()` |
+| `Json::relation(relation)` | `{key}://{identifier}`, with the key of the relation's related model | A reference without a key, as a 1.x declaration |
 | `Json::document()` | A document (ProseMirror JSON…), as given | `references(...)` |
 
 Every node has `required()`, `nullable()`, `default()` and `input()`. A scalar node (a string, a number, a boolean, a date, an enum or a reference) also has `translatable()` and `extract()`.
@@ -129,12 +130,19 @@ A schema compiles into the declarations of the [hook](#declaring-paths), so a co
 | `'prize' => Json::reference('prize')->relation('prizes')` | `['path' => 'prize', 'key' => 'prize', 'relation' => 'prizes']` |
 | `'image' => Json::media()->translatable()` | `['path' => 'image.*', 'key' => 'media', 'relation' => 'medias']` |
 | `'prizes' => Json::list(Json::object(['prize' => Json::reference('prize')]))` | `['path' => 'prizes.*.prize', 'key' => 'prize']` |
+| `'credits' => Json::list(Json::object(['author' => Json::relation('authors')]))` | `['path' => 'credits.*.author', 'relation' => 'authors']` |
 | `'body' => Json::document()->references('media', Json::reference('prize')->relation('prizes'))` | `['path' => 'body.**', 'key' => 'media']` and `['path' => 'body.**', 'key' => 'prize', 'relation' => 'prizes']` |
 
 - The key must be mapped ([The registry of keys](#the-registry-of-keys)): it is the key written, and its handler applies, or the node's `using()` handler.
 - With `relation()`, the references are synced to that relation of the model ([Syncing](#syncing)), whose related model must be the key's model.
 - **Without a relation, a reference is resolved, checked with `allows()`, loaded in batches and listed (with a `null` relation), but not synced** ([#4](https://github.com/folkloreinc/laravel-json-data/issues/4)). Every mapped key of the key's model is accepted at its path, and the rewrite command rewrites it. A record of where a row came from, or of the record a snapshot was taken from, needs no relation.
-- `document()->references()` takes keys, or reference nodes to give them a relation. Its references are found at any depth, as `**` ([Paths](#paths)).
+- `document()->references()` takes keys, or reference nodes to give them a relation. Its references are found at any depth, as `**` ([Paths](#paths)). A node without a key isn't one of them: at any depth, only mapped keys are references.
+- **`Json::relation('authors')` is a reference named by its relation, without a key**, as a declaration of laravel-folklore 1.x (`'credits.*.author' => 'authors'`), so that a 1.x model moves to a schema without mapping the keys of its relations ([#25](https://github.com/folkloreinc/laravel-json-data/issues/25)). It does what the cast does for that declaration:
+  - **write:** the first key mapped to the relation's related model, else the relation's name (`authors://12`). Under `enforceMap()`, an unmapped related model throws;
+  - **read:** a mapped key by its handler, in batches; a key that isn't mapped through the owner's relation, so only the rows attached to the owner ([decisions/0016](decisions/0016-scope-of-unmapped-keys.md)). When the site maps the key later, the same node reads by its column, attached or not: that choice stays the site's;
+  - **sync:** to the relation, as `Json::reference()->relation()`;
+  - **validation:** the [rule](#validation-rules) checks the key that the node writes for the related model; for an unmapped one, it accepts a model of the related class, one of its ids, or a reference of the relation's name;
+  - `translatable()` and `extract()` as on any reference node. `using()` is refused: the handler is the written key's, so map the key and use `Json::reference()->using()`.
 
 ### Filling
 
@@ -554,6 +562,7 @@ What the package doesn't know, an application or a package sets once, in a servi
 | `lazy` | `JsonData::load()`, `withJsonReferences()` | Kept, deprecated |
 | `**` undocumented | `**` specified | — |
 | `getJsonDataRelations()`, `getJsonDataColumnExtract()` | `jsonDataSchema()` | Kept in laravel-folklore, through the declarations hook, until its 3.0 |
+| `'credits.*.author' => 'authors'`: a relation, no key; unmapped keys through the relation | `Json::relation('authors')`, which compiles to the same declaration | — |
 | One JSON column per repository (`$jsonAttributeName`) | laravel-folklore's `$jsonAttributes` | Kept, deprecated |
 | `$jsonAttributeFillable`, `$jsonAttributeExclude`: input keys into the column, in the base repository only; `'*'` stores every key that isn't fillable | `JsonData::fill()`, from the schema, for any code that saves the model; unknown keys refused under `additional(false)` | Kept in laravel-folklore for the models without a schema |
 | A fake relation with `sync => false` for a reference that isn't a relation | `Json::reference()` without a relation | — |

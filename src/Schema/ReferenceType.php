@@ -5,7 +5,8 @@ namespace Folklore\JsonData\Schema;
 /**
  * A reference to a model, stored as `{key}://{identifier}` (docs/json-data.md, "Stored
  * format"). The key must be mapped. With `relation()`, the references are synced to that
- * relation of the model; without one, they are resolved and checked, but not synced.
+ * relation of the model; without one, they are resolved and checked, but not synced. A
+ * reference named by its relation, without a key, is a `RelationType`.
  *
  * What is given to it (a model, an identifier, a file…) is prepared by the key's handler
  * when the model is saved, as for any reference path.
@@ -20,7 +21,7 @@ class ReferenceType extends ScalarType
     protected ?string $using = null;
 
     public function __construct(
-        protected string $key,
+        protected ?string $key,
     ) {}
 
     /**
@@ -46,7 +47,10 @@ class ReferenceType extends ScalarType
         return $this;
     }
 
-    public function getKey(): string
+    /**
+     * The key written, or null for a node named by its relation (`Json::relation()`).
+     */
+    public function getKey(): ?string
     {
         return $this->key;
     }

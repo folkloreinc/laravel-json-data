@@ -82,4 +82,9 @@ class Offer extends Model implements HasJsonDataSchema
     {
         return $this->morphToMany(Prize::class, 'prizable', 'prizes_pivot')->withTimestamps();
     }
+
+    public function blocks()
+    {
+        return $this->morphToMany(Block::class, 'blockable', 'blocks_pivot');
+    }
 }

@@ -3,6 +3,7 @@
 namespace Folklore\JsonData\Schema\Rules;
 
 use Closure;
+use Folklore\JsonData\Exceptions\InvalidJsonReference;
 use Folklore\JsonData\JsonData;
 use Folklore\JsonData\JsonDataCast;
 use Folklore\JsonData\JsonReference;
@@ -16,7 +17,9 @@ use Illuminate\Database\Eloquent\Model;
  * The validation rule of a reference node (`Json::rules()`): a model, a reference or an
  * identifier given to it must be a model of the key's model that its handler finds and
  * allows the owner to refer to. Other values, such as files, are left to the handler,
- * which prepares them when the model is saved.
+ * which prepares them when the model is saved. A node named by its relation
+ * (`Json::relation()`) checks the key it writes for the related model: for an unmapped
+ * one, a model of the related class or one of its ids, and its own references.
  */
 class Reference implements ValidationRule
 {
@@ -34,7 +37,19 @@ class Reference implements ValidationRule
     public function validate(string $attribute, mixed $value, Closure $fail): void
     {
         $key = $this->node->getKey();
-        $target = JsonData::target($key);
+        $relation = $this->node->getRelation();
+        if (is_null($key) && ! is_null($relation)) {
+            try {
+                [$key, $target] = JsonDataCast::writeTargetFor($this->owner, $relation);
+            } catch (InvalidJsonReference $exception) {
+                $fail("The :attribute can't be checked: {$exception->getMessage()}");
+
+                return;
+            }
+        } else {
+            $key = (string) $key;
+            $target = JsonData::target($key);
+        }
         if (is_null($target)) {
             $fail("The :attribute can't be checked: [{$key}] is not a mapped key.");
 
@@ -51,8 +66,9 @@ class Reference implements ValidationRule
         }
 
         if (is_string($value) && ! is_null($entry = JsonData::parse($value))) {
-            // A reference of another key of the same model is kept, as the cast keeps it
-            $entryTarget = $entry->target;
+            // A reference of another key of the same model is kept, as the cast keeps it,
+            // and so is one of the unmapped key that a node named by its relation writes
+            $entryTarget = $entry->target ?? ($entry->key === $key ? $target : null);
             if (is_null($entryTarget) || ! $entryTarget->accepts($target->model)) {
                 $fail("The :attribute is not a reference of [{$key}].");
 

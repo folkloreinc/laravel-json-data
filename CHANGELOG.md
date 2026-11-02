@@ -6,10 +6,16 @@ The package is released in pre-releases, tagged `v1.0.0-alpha.N`, then `beta.N` 
 
 ## [Unreleased]
 
+### Breaking changes
+
+- `ReferenceType::getKey()` returns `null` for a node named by its relation (`RelationType`, from `Json::relation()`).
+- `Json::document()->references()` refuses a reference node without a key.
+
 ### Added
 
 - `json-data:rewrite-references --from-column=`: reads the identifiers of `--from` by another column than the one it is mapped by, so that `--from=media --from-column=id --to=media` rewrites `media://12` written by id to `media://med_…` by uid. Identifiers that can't be of that column are left as they are and reported apart ([#23](https://github.com/folkloreinc/laravel-json-data/issues/23)).
 - `JsonReference::canIdentify()`: whether a string can be an identifier of a target's column (only digits for an integer key).
+- `Json::relation('authors')`: a reference node named by its relation, without a key, which compiles to the declaration of laravel-folklore 1.x (`['relation' => 'authors']`): it writes the first key mapped to the related model, else the relation's name, reads an unmapped key through the owner's relation, and syncs to it. `Json::rules()` checks the key it writes, or, for an unmapped one, the related models. `using()` is refused on it ([#25](https://github.com/folkloreinc/laravel-json-data/issues/25)).
 - `JsonData::load($models, depth: 3)`: loads the models that the references resolve to in turn, one level at a time, with one query per key for each level, such as the blocks of a page's blocks and their media ([#24](https://github.com/folkloreinc/laravel-json-data/issues/24)).
 
 ### Fixed

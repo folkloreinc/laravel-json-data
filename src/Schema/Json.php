@@ -104,6 +104,16 @@ class Json
         return new ReferenceType($key);
     }
 
+    /**
+     * A reference named by its relation, without a key, as a declaration of
+     * laravel-folklore 1.x (`'author' => 'authors'`): it writes the first key mapped to the
+     * related model, else the relation's name, and is synced to the relation.
+     */
+    public static function relation(string $relation): RelationType
+    {
+        return new RelationType($relation);
+    }
+
     public static function document(): DocumentType
     {
         return new DocumentType;
