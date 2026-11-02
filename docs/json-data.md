@@ -469,6 +469,7 @@ Applications extend it rather than implement the contract from scratch.
 After the model is saved, the references at each relation's paths are synced to that relation, as in 1.x, by the kind of relation. The cast does it in a `saved` listener, registered with its `saving` one, so a model is synced however it is saved: `$model->save()`, `create()`, a factory, a seeder, an application repository, or laravel-folklore's base repository ([#97](https://github.com/folkloreinc/laravel-folklore/issues/97)). 1.x only synced in the base repository.
 
 - Only the relations declared in the JSON attributes that changed are synced. A relation gathers its references from every JSON attribute of the model.
+- What changed is recorded when the model is being saved, in the cast's `saving` listener, not read with `isDirty()` in `saved`: a `saved` listener that runs before the cast's and saves the model again, such as eloquent-sluggable's with `sluggableEvent()` set to `saved`, would have made the attributes clean ([#22](https://github.com/folkloreinc/laravel-json-data/issues/22)).
 - A model saved without events (`saveQuietly()`, `withoutEvents()`) isn't synced, nor are rows written another way (raw SQL, imports). `JsonDataCast::syncRelations($model)` syncs one, and `json-data:sync-references` syncs the stored rows ([Syncing stored rows](#syncing-stored-rows)).
 - laravel-folklore's base repository doesn't sync a second time.
 

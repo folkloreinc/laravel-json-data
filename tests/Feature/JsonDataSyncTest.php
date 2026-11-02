@@ -9,6 +9,7 @@ use Folklore\JsonData\Tests\Feature\Fixtures\BrandGame;
 use Folklore\JsonData\Tests\Feature\Fixtures\Game;
 use Folklore\JsonData\Tests\Feature\Fixtures\Prize;
 use Folklore\JsonData\Tests\Feature\Fixtures\RegistryGame;
+use Folklore\JsonData\Tests\Feature\Fixtures\SluggedGame;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -28,6 +29,13 @@ class JsonDataSyncTest extends JsonDataTestCase
         });
     }
 
+    protected function tearDown(): void
+    {
+        SluggedGame::$withEvents = false;
+
+        parent::tearDown();
+    }
+
     public function test_saving_the_model_syncs_its_references()
     {
         $media = $this->makeMedia();
@@ -45,6 +53,35 @@ class JsonDataSyncTest extends JsonDataTestCase
 
         $this->assertSame([], $game->medias()->get()->modelKeys());
         $this->assertSame([], $game->blocks()->pluck('blocks.id')->all());
+    }
+
+    /**
+     * A `saved` listener that runs before the cast's and saves the model again doesn't hide
+     * what the save changed (#22).
+     */
+    public function test_a_listener_that_saves_the_model_again_doesnt_skip_the_sync()
+    {
+        $block = $this->makeBlock();
+
+        $game = new SluggedGame;
+        $game->data = ['blocks' => [$block]];
+        $game->save();
+
+        $this->assertSame('game-'.$game->id, $game->fresh()?->handle);
+        $this->assertSame([$block->id], $game->blocks()->pluck('blocks.id')->all());
+    }
+
+    public function test_a_listener_that_saves_the_model_again_with_events_syncs_once()
+    {
+        SluggedGame::$withEvents = true;
+        $block = $this->makeBlock();
+
+        $game = new SluggedGame;
+        $game->data = ['blocks' => [$block]];
+        $writes = $this->queriesOn('blocks_pivot', fn () => $game->save(), 'insert');
+
+        $this->assertSame([$block->id], $game->blocks()->pluck('blocks.id')->all());
+        $this->assertSame(1, $writes);
     }
 
     public function test_a_model_saved_without_events_is_not_synced()

@@ -44,6 +44,7 @@ The behaviour of `laravel-folklore` 2.0.0-alpha.3, in its own package ([laravel-
 
 What sites on `laravel-folklore` 1.1 need to move their JSON data and declarations to 2.0, found while migrating urbania.media and two other 1.1 sites with `folklore:upgrade --schemas` ([laravel-folklore#151](https://github.com/folkloreinc/laravel-folklore/pull/151)).
 
+- [x] The sync after a `saved` listener that saves the model again, as eloquent-sluggable's ([#22](https://github.com/folkloreinc/laravel-json-data/issues/22))
 - [x] `json-data:rewrite-references --from-column=`: references whose identifiers are of another column than their key's, such as `media://12` by id where `media` is mapped by uid ([#23](https://github.com/folkloreinc/laravel-json-data/issues/23))
 - [x] `JsonData::load()` with a depth: the references of the models that references resolve to, such as nested blocks ([#24](https://github.com/folkloreinc/laravel-json-data/issues/24))
 - [x] `Json::relation()`: a reference node named by its relation, without a key, as a 1.x declaration ([#25](https://github.com/folkloreinc/laravel-json-data/issues/25))

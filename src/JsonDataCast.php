@@ -64,6 +64,16 @@ class JsonDataCast implements CastsAttributes
     private static ?WeakMap $listening = null;
 
     /**
+     * The JSON attributes of a model that changed, recorded while it is being saved: what
+     * its `saved` listener syncs. A `saved` listener that runs before the cast's and saves
+     * the model again (`saveQuietly()`, as eloquent-sluggable's) syncs its original, so
+     * `isDirty()` no longer tells, there, what the save changed (#22).
+     *
+     * @var WeakMap<Model, list<string>>|null
+     */
+    private static ?WeakMap $changing = null;
+
+    /**
      * Cast the given value.
      *
      * @param  Model  $model
@@ -804,16 +814,41 @@ class JsonDataCast implements CastsAttributes
     /**
      * After a model is saved with events, syncs the relations declared in the JSON
      * attributes that changed. `saveQuietly()` and `withoutEvents()` skip it.
+     *
+     * The attributes are those recorded when the model was being saved, so that another
+     * listener that saves the model again in between doesn't hide them (#22); without a
+     * record, as when it is called by hand, those that are dirty.
      */
     public static function syncSaved(Model $model): void
     {
-        $changed = array_values(array_filter(
-            self::castAttributes($model),
-            fn (string $attribute) => $model->isDirty($attribute),
-        ));
+        $changed = self::changingStore()[$model] ?? null;
+        unset(self::changingStore()[$model]);
+        $changed ??= self::dirtyCastAttributes($model);
         if (count($changed) > 0) {
             self::syncRelations($model, $changed);
         }
+    }
+
+    /**
+     * Records, while a model is being saved, the JSON attributes that the save changes,
+     * for its `saved` listener. A save in a listener of another save adds its own: the
+     * first `saved` listener to run syncs them all.
+     */
+    protected static function recordChanges(Model $model): void
+    {
+        $recorded = self::changingStore()[$model] ?? [];
+        self::changingStore()[$model] = array_values(array_unique([...$recorded, ...self::dirtyCastAttributes($model)]));
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected static function dirtyCastAttributes(Model $model): array
+    {
+        return array_values(array_filter(
+            self::castAttributes($model),
+            fn (string $attribute) => $model->isDirty($attribute),
+        ));
     }
 
     /**
@@ -1435,6 +1470,7 @@ class JsonDataCast implements CastsAttributes
         if (! isset($classes[$model::class])) {
             $dispatcher->listen('eloquent.saving: '.$model::class, function (Model $saving) {
                 self::preparePending($saving);
+                self::recordChanges($saving);
             });
             $dispatcher->listen('eloquent.saved: '.$model::class, function (Model $saved) {
                 self::syncSaved($saved);
@@ -1485,6 +1521,14 @@ class JsonDataCast implements CastsAttributes
     private static function pendingStore(): WeakMap
     {
         return self::$pending ??= new WeakMap;
+    }
+
+    /**
+     * @return WeakMap<Model, list<string>>
+     */
+    private static function changingStore(): WeakMap
+    {
+        return self::$changing ??= new WeakMap;
     }
 
     /**
