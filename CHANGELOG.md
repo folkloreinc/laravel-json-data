@@ -6,6 +6,10 @@ The package is released in pre-releases, tagged `v1.0.0-alpha.N`, then `beta.N` 
 
 ## [Unreleased]
 
+## [1.0.0-alpha.5] - 2026-11-02
+
+What sites on laravel-folklore 1.1 need to move their JSON data and declarations to 2.0 ([roadmap](docs/roadmap.md#migrating-1x-sites-100-alpha5)).
+
 ### Breaking changes
 
 - The `delete` option of a declaration throws `InvalidJsonReference` on a relation that doesn't own its rows (a `BelongsToMany`, a `BelongsTo`), where it deleted the related models themselves, or the parent ([#26](https://github.com/folkloreinc/laravel-json-data/issues/26)).
@@ -103,7 +107,8 @@ The JSON data of `folklore/laravel-folklore` 2.0.0-alpha.3, in its own package (
 
 - `JsonDataCast::MEDIAS_HANDLE`, kept for the code that read it in laravel-folklore. Removed in 2.0.
 
-[Unreleased]: https://github.com/folkloreinc/laravel-json-data/compare/v1.0.0-alpha.4...v1.x
+[Unreleased]: https://github.com/folkloreinc/laravel-json-data/compare/v1.0.0-alpha.5...v1.x
+[1.0.0-alpha.5]: https://github.com/folkloreinc/laravel-json-data/compare/v1.0.0-alpha.4...v1.0.0-alpha.5
 [1.0.0-alpha.4]: https://github.com/folkloreinc/laravel-json-data/compare/v1.0.0-alpha.3...v1.0.0-alpha.4
 [1.0.0-alpha.3]: https://github.com/folkloreinc/laravel-json-data/compare/v1.0.0-alpha.2...v1.0.0-alpha.3
 [1.0.0-alpha.2]: https://github.com/folkloreinc/laravel-json-data/compare/v1.0.0-alpha.1...v1.0.0-alpha.2
