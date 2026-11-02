@@ -39,6 +39,11 @@ class InvalidJsonReference extends InvalidArgumentException
         return new self("The JSON reference key [{$key}] is not mapped to [{$model}].");
     }
 
+    public static function cantDelete(string $relation, string $model): self
+    {
+        return new self("The relation [{$relation}] of [{$model}] doesn't own its rows: only a HasOne, HasMany, MorphOne or MorphMany deletes the rows that the JSON no longer references (the `delete` option, deletesUnreferenced()).");
+    }
+
     public static function missingIdentifier(string $key, string $model): self
     {
         return new self("The [{$model}] has no identifier for the JSON reference key [{$key}].");

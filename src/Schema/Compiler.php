@@ -142,12 +142,17 @@ final class Compiler
      */
     private function reference(ReferenceType $node, string $path): array
     {
+        if ($node->isDeletingUnreferenced() && is_null($node->getRelation())) {
+            throw InvalidJsonData::invalidSchema("deletesUnreferenced() deletes the rows of a relation: give the node at [{$path}] one.");
+        }
+
         return array_filter([
             'path' => $path,
             'key' => $node->getKey(),
             'relation' => $node->getRelation(),
             'using' => $node->getUsing(),
-        ], fn (?string $option) => ! is_null($option));
+            'delete' => $node->isDeletingUnreferenced() ? true : null,
+        ], fn (string|bool|null $option) => ! is_null($option));
     }
 
     private function column(string $path, string $column): void

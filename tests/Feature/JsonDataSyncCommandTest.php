@@ -19,9 +19,9 @@ use Illuminate\Support\Facades\DB;
  */
 class JsonDataSyncCommandTest extends JsonDataTestCase
 {
-    private const HEADERS = ['Model', 'Rows', 'Rows changed', 'Attached', 'Detached', 'Synced by callbacks, not compared', 'Unresolved references'];
+    private const HEADERS = ['Model', 'Rows', 'Rows changed', 'Attached', 'Detached', 'Deleted', 'Synced by callbacks, not compared', 'Unresolved references'];
 
-    private const DRY_RUN_HEADERS = ['Model', 'Rows', 'Rows to change', 'To attach', 'To detach', 'Synced by callbacks, not compared', 'Unresolved references'];
+    private const DRY_RUN_HEADERS = ['Model', 'Rows', 'Rows to change', 'To attach', 'To detach', 'To delete', 'Synced by callbacks, not compared', 'Unresolved references'];
 
     public function test_the_command_syncs_the_relations_of_a_row_inserted_without_the_cast()
     {
@@ -35,7 +35,7 @@ class JsonDataSyncCommandTest extends JsonDataTestCase
         ]);
 
         $this->artisan('json-data:sync-references', ['--model' => [Game::class]])
-            ->expectsTable(self::HEADERS, [[Game::class, 1, 1, 3, 0, 0, 0]])
+            ->expectsTable(self::HEADERS, [[Game::class, 1, 1, 3, 0, 0, 0, 0]])
             ->assertSuccessful();
 
         $this->assertSame([$media->id], $game->medias()->get()->modelKeys());
@@ -52,7 +52,7 @@ class JsonDataSyncCommandTest extends JsonDataTestCase
 
         $writes = $this->writesDuring(function () {
             $this->artisan('json-data:sync-references', ['--model' => [Game::class]])
-                ->expectsTable(self::HEADERS, [[Game::class, 1, 0, 0, 0, 0, 0]])
+                ->expectsTable(self::HEADERS, [[Game::class, 1, 0, 0, 0, 0, 0, 0]])
                 ->assertSuccessful()
                 ->run();
         });
@@ -70,7 +70,7 @@ class JsonDataSyncCommandTest extends JsonDataTestCase
             $this->artisan('json-data:sync-references', ['--model' => [Game::class], '--dry-run' => true, '--verbose' => true])
                 ->expectsOutputToContain(Game::class.' #'.$game->id.' medias: attach '.$media->id)
                 ->expectsOutputToContain(Game::class.' #'.$game->id.' blocks: attach '.$block->id)
-                ->expectsTable(self::DRY_RUN_HEADERS, [[Game::class, 1, 1, 2, 0, 0, 0]])
+                ->expectsTable(self::DRY_RUN_HEADERS, [[Game::class, 1, 1, 2, 0, 0, 0, 0]])
                 ->expectsOutputToContain('Dry run: nothing was written.')
                 ->assertSuccessful()
                 ->run();
@@ -91,7 +91,7 @@ class JsonDataSyncCommandTest extends JsonDataTestCase
         DB::table('games')->where('id', $game->id)->update(['data' => json_encode(['blocks' => ['blocks://'.$kept->id]])]);
 
         $this->artisan('json-data:sync-references', ['--model' => [Game::class]])
-            ->expectsTable(self::HEADERS, [[Game::class, 1, 1, 0, 1, 0, 0]])
+            ->expectsTable(self::HEADERS, [[Game::class, 1, 1, 0, 1, 0, 0, 0]])
             ->assertSuccessful();
 
         $this->assertSame([$kept->id], $game->blocks()->pluck('blocks.id')->all());
@@ -103,12 +103,12 @@ class JsonDataSyncCommandTest extends JsonDataTestCase
         $id = DB::table('pages')->insertGetId(['handle' => 'child', 'data' => json_encode(['parent' => 'parent://'.$parent->id])]);
 
         $this->artisan('json-data:sync-references', ['--model' => [Page::class]])
-            ->expectsTable(self::HEADERS, [[Page::class, 2, 1, 1, 0, 0, 0]])
+            ->expectsTable(self::HEADERS, [[Page::class, 2, 1, 1, 0, 0, 0, 0]])
             ->assertSuccessful();
         $this->assertEquals($parent->id, DB::table('pages')->where('id', $id)->value('parent_id'));
 
         $this->artisan('json-data:sync-references', ['--model' => [Page::class]])
-            ->expectsTable(self::HEADERS, [[Page::class, 2, 0, 0, 0, 0, 0]])
+            ->expectsTable(self::HEADERS, [[Page::class, 2, 0, 0, 0, 0, 0, 0]])
             ->assertSuccessful();
     }
 
@@ -140,12 +140,12 @@ class JsonDataSyncCommandTest extends JsonDataTestCase
         );
 
         $this->artisan('json-data:sync-references', ['--model' => [Game::class], '--dry-run' => true])
-            ->expectsTable(self::DRY_RUN_HEADERS, [[Game::class, 1, 1, 2, 0, 0, 0]])
+            ->expectsTable(self::DRY_RUN_HEADERS, [[Game::class, 1, 1, 2, 0, 0, 0, 0]])
             ->assertSuccessful();
         $this->assertSame(0, $calls);
 
         $this->artisan('json-data:sync-references', ['--model' => [Game::class]])
-            ->expectsTable(self::HEADERS, [[Game::class, 1, 1, 2, 0, 0, 0]])
+            ->expectsTable(self::HEADERS, [[Game::class, 1, 1, 2, 0, 0, 0, 0]])
             ->assertSuccessful();
         $this->assertSame(1, $calls);
         $this->assertEquals([$media->id], $usages[$game->id]);
@@ -153,7 +153,7 @@ class JsonDataSyncCommandTest extends JsonDataTestCase
         $this->assertSame([$block->id], $game->blocks()->pluck('blocks.id')->all());
 
         $this->artisan('json-data:sync-references', ['--model' => [Game::class]])
-            ->expectsTable(self::HEADERS, [[Game::class, 1, 0, 0, 0, 0, 0]])
+            ->expectsTable(self::HEADERS, [[Game::class, 1, 0, 0, 0, 0, 0, 0]])
             ->assertSuccessful();
         $this->assertSame(1, $calls);
     }
@@ -170,13 +170,13 @@ class JsonDataSyncCommandTest extends JsonDataTestCase
         });
 
         $this->artisan('json-data:sync-references', ['--model' => [Game::class], '--dry-run' => true])
-            ->expectsTable(self::DRY_RUN_HEADERS, [[Game::class, 1, 0, 0, 0, 1, 0]])
+            ->expectsTable(self::DRY_RUN_HEADERS, [[Game::class, 1, 0, 0, 0, 0, 1, 0]])
             ->assertSuccessful();
         $this->assertSame(0, $calls);
 
         $this->artisan('json-data:sync-references', ['--model' => [Game::class]])->run();
         $this->artisan('json-data:sync-references', ['--model' => [Game::class]])
-            ->expectsTable(self::HEADERS, [[Game::class, 1, 0, 0, 0, 1, 0]])
+            ->expectsTable(self::HEADERS, [[Game::class, 1, 0, 0, 0, 0, 1, 0]])
             ->assertSuccessful();
 
         // `medias`, `blocks` and `prizes` are declared: the callback may sync any of them
@@ -195,7 +195,7 @@ class JsonDataSyncCommandTest extends JsonDataTestCase
         $this->artisan('json-data:sync-references', ['--model' => [RegistryGame::class], '--verbose' => true])
             ->expectsOutputToContain(RegistryGame::class.' #'.$id.' data.image.fr: medias://999 doesn\'t resolve')
             ->expectsOutputToContain(RegistryGame::class.' #'.$id.' data.prizes.1.prize: prize://missing doesn\'t resolve')
-            ->expectsTable(self::HEADERS, [[RegistryGame::class, 1, 1, 1, 0, 0, 2]])
+            ->expectsTable(self::HEADERS, [[RegistryGame::class, 1, 1, 1, 0, 0, 0, 2]])
             ->assertSuccessful();
 
         // A reference to a row that doesn't exist is reported, and not synced
@@ -204,7 +204,7 @@ class JsonDataSyncCommandTest extends JsonDataTestCase
         $this->assertSame(0, DB::table('mediables')->where('mediable_id', $game->id)->count());
 
         $this->artisan('json-data:sync-references', ['--model' => [RegistryGame::class]])
-            ->expectsTable(self::HEADERS, [[RegistryGame::class, 1, 0, 0, 0, 0, 2]])
+            ->expectsTable(self::HEADERS, [[RegistryGame::class, 1, 0, 0, 0, 0, 0, 2]])
             ->assertSuccessful();
     }
 
@@ -236,7 +236,7 @@ class JsonDataSyncCommandTest extends JsonDataTestCase
         }
 
         $this->artisan('json-data:sync-references', ['--model' => [Game::class], '--chunk' => 2])
-            ->expectsTable(self::HEADERS, [[Game::class, 3, 3, 3, 0, 0, 0]])
+            ->expectsTable(self::HEADERS, [[Game::class, 3, 3, 3, 0, 0, 0, 0]])
             ->assertSuccessful();
 
         $this->assertSame(3, DB::table('blocks_pivot')->count());

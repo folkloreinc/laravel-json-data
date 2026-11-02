@@ -35,6 +35,26 @@ class ReferenceType extends ScalarType
         return $this;
     }
 
+    protected bool $deletesUnreferenced = false;
+
+    /**
+     * Deletes, when the model's references are synced, the rows of the relation that the
+     * JSON no longer references, as the `delete` option of a 1.x declaration. Only for a
+     * relation that owns its rows: a HasOne, HasMany, MorphOne or MorphMany. The rows are
+     * deleted with a query, without model events.
+     */
+    public function deletesUnreferenced(bool $deletes = true): static
+    {
+        $this->deletesUnreferenced = $deletes;
+
+        return $this;
+    }
+
+    public function isDeletingUnreferenced(): bool
+    {
+        return $this->deletesUnreferenced;
+    }
+
     /**
      * A handler for this node only, instead of the key's handler.
      *

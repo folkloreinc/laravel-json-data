@@ -49,6 +49,7 @@ class JsonReferencesSyncCommand extends Command
             $dryRun ? 'Rows to change' : 'Rows changed',
             $dryRun ? 'To attach' : 'Attached',
             $dryRun ? 'To detach' : 'Detached',
+            $dryRun ? 'To delete' : 'Deleted',
             'Synced by callbacks, not compared',
             'Unresolved references',
         ], $rows);
@@ -65,7 +66,7 @@ class JsonReferencesSyncCommand extends Command
      * relation that a callback syncs without saying what it has synced.
      *
      * @param  class-string<Model>  $class
-     * @return array{int, int, int, int, int, int}
+     * @return array{int, int, int, int, int, int, int}
      */
     protected function sync(string $class, int $chunk, bool $dryRun): array
     {
@@ -73,6 +74,7 @@ class JsonReferencesSyncCommand extends Command
         $changed = 0;
         $attached = 0;
         $detached = 0;
+        $deleted = 0;
         $notCompared = 0;
         $unresolved = 0;
 
@@ -82,6 +84,7 @@ class JsonReferencesSyncCommand extends Command
             &$changed,
             &$attached,
             &$detached,
+            &$deleted,
             &$notCompared,
             &$unresolved
         ) {
@@ -103,6 +106,7 @@ class JsonReferencesSyncCommand extends Command
                         $rowChanged = true;
                         $attached += count($item['attach'] ?? []);
                         $detached += count($item['detach'] ?? []);
+                        $deleted += count($item['delete'] ?? []);
                         $this->line($this->describe($model)." {$relationName}: ".$this->describeChanges($item), null, 'v');
                     }
                 }
@@ -114,7 +118,7 @@ class JsonReferencesSyncCommand extends Command
             }
         });
 
-        return [$read, $changed, $attached, $detached, $notCompared, $unresolved];
+        return [$read, $changed, $attached, $detached, $deleted, $notCompared, $unresolved];
     }
 
     protected function describe(Model $model): string

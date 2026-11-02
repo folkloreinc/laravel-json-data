@@ -669,9 +669,9 @@ class JsonDataCast implements CastsAttributes
             $relationClass = $model->{$relationName}();
             $ids = $item['ids'];
             $relation = $item['relation'];
-            $delete = data_get($relation, 'delete', false);
-            if ($delete) {
-                $relationClass->whereNotIn('id', $ids)->delete();
+            if (data_get($relation, 'delete', false)) {
+                $owning = self::owningRelation($model, $relationName, $relationClass);
+                $owning->whereNotIn($owning->getRelated()->getQualifiedKeyName(), $ids)->delete();
             }
             if (isset($relation['sync'])) {
                 $relation['sync']($relationClass, $ids, $relation);
@@ -689,7 +689,7 @@ class JsonDataCast implements CastsAttributes
                 $relationClass
                     ->getRelated()
                     ->newQuery()
-                    ->whereIn('id', $ids)
+                    ->whereIn($relationClass->getRelated()->getKeyName(), $ids)
                     ->whereNull($relationClass->getForeignKeyName())
                     ->update([
                         $relationClass->getMorphType() => $relationClass->getMorphClass(),
@@ -699,7 +699,7 @@ class JsonDataCast implements CastsAttributes
                 $relationClass
                     ->getRelated()
                     ->newQuery()
-                    ->whereIn('id', $ids)
+                    ->whereIn($relationClass->getRelated()->getKeyName(), $ids)
                     ->whereNull($relationClass->getForeignKeyName())
                     ->update([
                         $relationClass->getForeignKeyName() => $relationClass->getParentKey(),
@@ -738,8 +738,8 @@ class JsonDataCast implements CastsAttributes
             return $diff;
         }
         if (data_get($relation, 'delete', false)) {
-            $diff['delete'] = self::keyValues((clone $relationClass)
-                ->whereNotIn('id', $ids)
+            $diff['delete'] = self::keyValues((clone self::owningRelation($model, $relationName, $relationClass))
+                ->whereNotIn($relationClass->getRelated()->getQualifiedKeyName(), $ids)
                 ->pluck($relationClass->getRelated()->getQualifiedKeyName()));
         }
 
@@ -763,7 +763,7 @@ class JsonDataCast implements CastsAttributes
             $attach = count($ids) === 0 ? [] : self::keyValues($relationClass
                 ->getRelated()
                 ->newQuery()
-                ->whereIn('id', $ids)
+                ->whereIn($relationClass->getRelated()->getKeyName(), $ids)
                 ->whereNull($relationClass->getForeignKeyName())
                 ->pluck($relationClass->getRelated()->getKeyName()));
             $target = array_merge($current, $attach);
@@ -1191,6 +1191,22 @@ class JsonDataCast implements CastsAttributes
         $identifier = $target->identifierOf($prepared);
 
         return is_null($identifier) ? self::unpreparable($model, $relationName !== '' ? $relationName : $writeKey) : $writeKey.'://'.$identifier;
+    }
+
+    /**
+     * The relation of a path with the `delete` option, which must own its rows: deleting
+     * the rows of a BelongsToMany would delete the related models themselves, not the
+     * pivot rows, and those of a BelongsTo the parent.
+     *
+     * @return HasOneOrMany<Model, Model, mixed>
+     */
+    protected static function owningRelation(Model $model, string $relationName, mixed $relation): HasOneOrMany
+    {
+        if (! $relation instanceof HasOneOrMany) {
+            throw InvalidJsonReference::cantDelete($relationName, $model::class);
+        }
+
+        return $relation;
     }
 
     /**
