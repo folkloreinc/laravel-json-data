@@ -12,6 +12,13 @@ use Illuminate\Database\Eloquent\Model;
  */
 class Contest extends Model implements DeclaresJsonData
 {
+    /**
+     * Options added to the declaration of the `featured.*` paths.
+     *
+     * @var array<string, mixed>
+     */
+    public static array $featuredOptions = [];
+
     protected $table = 'contests';
 
     protected $casts = [
@@ -21,7 +28,7 @@ class Contest extends Model implements DeclaresJsonData
     public function jsonDataReferences(string $attribute, mixed $value, array $attributes): array
     {
         return [
-            'featured.*' => 'prizes',
+            'featured.*' => count(self::$featuredOptions) === 0 ? 'prizes' : ['relation' => 'prizes', ...self::$featuredOptions],
         ];
     }
 

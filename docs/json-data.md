@@ -107,8 +107,8 @@ class Offer extends Model implements HasJsonDataSchema
 | `Json::list(node)` | An array | `min()`, `max()` (length) |
 | `Json::map(node)` | An object with any keys | `min()`, `max()` (number of keys) |
 | `Json::any()` | Any value, not looked into | For data the application doesn't describe yet |
-| `Json::reference(key)` | `{key}://{identifier}` | `relation()`, `using()` |
-| `Json::relation(relation)` | `{key}://{identifier}`, with the key of the relation's related model | A reference without a key, as a 1.x declaration |
+| `Json::reference(key)` | `{key}://{identifier}` | `relation()`, `using()`, `deletesUnreferenced()` |
+| `Json::relation(relation)` | `{key}://{identifier}`, with the key of the relation's related model | A reference without a key, as a 1.x declaration; `deletesUnreferenced()` |
 | `Json::document()` | A document (ProseMirror JSON…), as given | `references(...)` |
 
 Every node has `required()`, `nullable()`, `default()` and `input()`. A scalar node (a string, a number, a boolean, a date, an enum or a reference) also has `translatable()` and `extract()`.
@@ -143,6 +143,7 @@ A schema compiles into the declarations of the [hook](#declaring-paths), so a co
   - **sync:** to the relation, as `Json::reference()->relation()`;
   - **validation:** the [rule](#validation-rules) checks the key that the node writes for the related model; for an unmapped one, it accepts a model of the related class, one of its ids, or a reference of the relation's name;
   - `translatable()` and `extract()` as on any reference node. `using()` is refused: the handler is the written key's, so map the key and use `Json::reference()->using()`.
+- **`deletesUnreferenced()`** on a node with a relation deletes, when the references are synced, the rows of the relation that the JSON no longer references: the `delete` option of a 1.x declaration, which it compiles to (`'uris' => Json::list(Json::relation('uris')->deletesUnreferenced())`) ([#26](https://github.com/folkloreinc/laravel-json-data/issues/26)). See [Syncing](#syncing).
 
 ### Filling
 
@@ -280,7 +281,7 @@ This is the shape of laravel-folklore's 1.x `getJsonDataRelations()` and `getJso
 | `key` | **New** | The key to write. Must be mapped, and its model must be the relation's related model. A path with a `key` and no `relation` is resolved and listed but not synced, as `Json::reference()` without a relation ([References](#references)) |
 | `using` | **New** | A handler class for this path only, instead of the key's handler |
 | `sync` | Kept | `false` to not sync this path, or a callable `fn (Relation $relation, array $ids, array $options)` |
-| `delete` | Kept | Delete the related rows that are no longer referenced, before syncing |
+| `delete` | Kept | Delete the related rows that are no longer referenced, before syncing. Only on a relation that owns its rows ([Syncing](#syncing)); `deletesUnreferenced()` in a schema |
 | `skip` | Kept | A callable that skips a value, on read and on write |
 | `lazy` | Deprecated | 1.x: resolve only if the relation is loaded. Batch resolution makes it unneeded ([below](#batch-resolution)); kept with its 1.x meaning until 3.0 |
 | `get`, `set`, `before_set` | Deprecated | Per-path callables. Kept, run before the handler, until 2.0 |
@@ -463,6 +464,7 @@ After the model is saved, the references at each relation's paths are synced to 
 - Only references whose key resolves to the relation's related model count. References of several keys to the same model (`medias://` and `media://`) are synced together, by the related model's key.
 - **Only the rows that exist are synced**: a reference whose model isn't found through the related model's query, global scopes included (a row that is gone, soft-deleted, or of another tenant), is left out of the sync, whatever its key's column ([#5](https://github.com/folkloreinc/laravel-json-data/issues/5)). It stays in the JSON, and `json-data:sync-references` reports it. Before, a reference by the related model's key was synced without being looked up, which wrote a pivot row to nothing, or failed on a foreign key. This costs a query per relation and key column on each sync.
 - `sync => false` and a `sync` callable behave as in 1.x.
+- **The `delete` option** (`deletesUnreferenced()` in a schema) deletes, before the sync, the rows of the relation whose keys the JSON no longer references, by the related model's key name. Only a relation that owns its rows takes it, a `HasOne`, `HasMany`, `MorphOne` or `MorphMany`: the sync of another one throws `InvalidJsonReference`, since deleting the rows of a `BelongsToMany` would delete the related models themselves, not the pivot rows, and those of a `BelongsTo` the parent. The rows are deleted with a query, as in 1.x, without model events: an application that needs the events deletes them itself. `json-data:sync-references --dry-run` reports the rows it would delete ([#26](https://github.com/folkloreinc/laravel-json-data/issues/26)).
 - A relation declared at several paths takes the options of all its declarations (`sync`, `delete`): an option given at one path applies to the relation. When two declarations give an option different values, the first one wins ([#18](https://github.com/folkloreinc/laravel-json-data/issues/18)).
 - Syncing doesn't call `refresh()` on the model anymore, nor does the base repository after it: it unsets the synced relations and the memoized values.
 
@@ -563,6 +565,7 @@ What the package doesn't know, an application or a package sets once, in a servi
 | `**` undocumented | `**` specified | — |
 | `getJsonDataRelations()`, `getJsonDataColumnExtract()` | `jsonDataSchema()` | Kept in laravel-folklore, through the declarations hook, until its 3.0 |
 | `'credits.*.author' => 'authors'`: a relation, no key; unmapped keys through the relation | `Json::relation('authors')`, which compiles to the same declaration | — |
+| `['relation' => 'uris', 'delete' => true]`: delete the rows no longer referenced | `Json::relation('uris')->deletesUnreferenced()`; only on a relation that owns its rows | — |
 | One JSON column per repository (`$jsonAttributeName`) | laravel-folklore's `$jsonAttributes` | Kept, deprecated |
 | `$jsonAttributeFillable`, `$jsonAttributeExclude`: input keys into the column, in the base repository only; `'*'` stores every key that isn't fillable | `JsonData::fill()`, from the schema, for any code that saves the model; unknown keys refused under `additional(false)` | Kept in laravel-folklore for the models without a schema |
 | A fake relation with `sync => false` for a reference that isn't a relation | `Json::reference()` without a relation | — |

@@ -12,6 +12,13 @@ use Illuminate\Database\Eloquent\Model;
  */
 class Page extends Model implements DeclaresJsonData
 {
+    /**
+     * Options added to the declaration of the `parent` path.
+     *
+     * @var array<string, mixed>
+     */
+    public static array $parentOptions = [];
+
     protected $table = 'pages';
 
     protected $fillable = ['handle', 'parent_id', 'data'];
@@ -23,7 +30,7 @@ class Page extends Model implements DeclaresJsonData
     public function jsonDataReferences(string $attribute, mixed $value, array $attributes): array
     {
         return [
-            'parent' => 'parent',
+            'parent' => count(self::$parentOptions) === 0 ? 'parent' : ['relation' => 'parent', ...self::$parentOptions],
         ];
     }
 

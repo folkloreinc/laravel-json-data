@@ -19,12 +19,6 @@ parameters:
 			path: src/JsonDataCast.php
 
 		-
-			message: '#^Cannot call method delete\(\) on mixed\.$#'
-			identifier: method.nonObject
-			count: 1
-			path: src/JsonDataCast.php
-
-		-
 			message: '#^Cannot call method find\(\) on mixed\.$#'
 			identifier: method.nonObject
 			count: 1
@@ -50,12 +44,6 @@ parameters:
 
 		-
 			message: '#^Cannot call method search\(\) on mixed\.$#'
-			identifier: method.nonObject
-			count: 1
-			path: src/JsonDataCast.php
-
-		-
-			message: '#^Cannot call method whereNotIn\(\) on mixed\.$#'
 			identifier: method.nonObject
 			count: 1
 			path: src/JsonDataCast.php
