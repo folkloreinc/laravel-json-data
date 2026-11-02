@@ -24,6 +24,7 @@ The package is released in pre-releases, tagged `v1.0.0-alpha.N`, then `beta.N` 
 
 ### Fixed
 
+- The relations of a model's references are synced when another `saved` listener, registered before the cast's, saves the model again (`saveQuietly()`, as eloquent-sluggable does on `saved`): the JSON attributes that changed are recorded when the model is being saved, instead of read with `isDirty()` afterwards ([#22](https://github.com/folkloreinc/laravel-json-data/issues/22)).
 - The sync deletes, attaches and plans the rows of a `HasOne` or `HasMany` by the related model's key name, not by an `id` column.
 - `json-data:rewrite-references` no longer looks up identifiers that can't be of the column of `--from`, such as a uid where it is an integer key, which PostgreSQL refuses; they are reported as unresolved.
 
