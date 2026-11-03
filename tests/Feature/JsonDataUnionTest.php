@@ -102,11 +102,14 @@ class JsonDataUnionTest extends JsonDataTestCase
         ]]);
         $offer->save();
 
-        $this->assertSame([
+        $blocks = [
             ['type' => 'text', 'body' => ['fr' => 'Bonjour']],
             ['type' => 'prize', 'prize' => 'prize://grand-prize', 'quantity' => 1],
             ['type' => 'stack', 'blocks' => [['type' => 'image', 'caption' => 'Logo', 'media' => 'medias://'.$media->id]]],
-        ], $this->rawData($offer)['blocks']);
+        ];
+        // The cast writes the discriminator first; MySQL and PostgreSQL store the keys in their own order
+        $this->assertSame($blocks, json_decode($offer->getAttributes()['data'], true)['blocks']);
+        $this->assertEquals($blocks, $this->rawData($offer)['blocks']);
         $this->assertSame([$prize->id], $offer->prizes()->pluck('prizes.id')->all());
         $this->assertSame([$media->id], $offer->medias()->pluck('medias.id')->all());
 
@@ -123,11 +126,12 @@ class JsonDataUnionTest extends JsonDataTestCase
 
         JsonData::fill($offer, ['hero' => ['body' => ['en' => 'Hello']]]);
         $offer->save();
-        $this->assertSame(['type' => 'text', 'body' => ['fr' => 'Bonjour', 'en' => 'Hello']], $this->rawData($offer)['hero']);
+        $this->assertSame(['type' => 'text', 'body' => ['fr' => 'Bonjour', 'en' => 'Hello']], json_decode($offer->getAttributes()['data'], true)['hero']);
+        $this->assertEquals(['type' => 'text', 'body' => ['fr' => 'Bonjour', 'en' => 'Hello']], $this->rawData($offer)['hero']);
 
         JsonData::fill($offer, ['hero' => ['type' => 'image', 'caption' => 'Logo']]);
         $offer->save();
-        $this->assertSame(['type' => 'image', 'caption' => 'Logo'], $this->rawData($offer)['hero']);
+        $this->assertEquals(['type' => 'image', 'caption' => 'Logo'], $this->rawData($offer)['hero']);
     }
 
     public function test_an_unknown_type_is_refused()
