@@ -107,6 +107,7 @@ class Offer extends Model implements HasJsonDataSchema
 | `Json::list(node)` | An array | `min()`, `max()` (length); `paths()` |
 | `Json::map(node)` | An object with any keys | `min()`, `max()` (number of keys); `paths()` |
 | `Json::any()` | Any value, not looked into | For data the application doesn't describe yet; `paths()` |
+| `Json::union(discriminator, [value => object])` | The object of the variant its discriminator names, with the discriminator first | See [Unions](#unions) |
 | `Json::reference(key)` | `{key}://{identifier}` | `relation()`, `using()`, `deletesUnreferenced()` |
 | `Json::relation(relation)` | `{key}://{identifier}`, with the key of the relation's related model | A reference without a key, as a 1.x declaration; `deletesUnreferenced()` |
 | `Json::document()` | A document (ProseMirror JSON…), as given | `references(...)` |
@@ -115,11 +116,40 @@ Every node has `required()`, `nullable()`, `default()` and `input()`. A scalar n
 
 - `required()`, `nullable()`, `min()`, `max()` and `pattern()` are checked by the [validation rules](#validation-rules), not when the value is filled or saved.
 - `translatable()` stores the value as an object keyed by locale (`{"fr": "…", "en": "…"}`), from the [locales](#locales).
-- `input('seo_title')` reads the node from that key of the flat input ([Filling](#filling)), instead of its name. Not under a list or a map.
-- `extract('name_sort')` copies the value into a column of the model when it is written, to sort or search on it, as the `columns` of a declaration. A translatable node is copied into one column per locale, named with a `{locale}` placeholder (`name_{locale}`). Not under a list or a map.
+- `input('seo_title')` reads the node from that key of the flat input ([Filling](#filling)), instead of its name. Not under a list, a map or a union.
+- `extract('name_sort')` copies the value into a column of the model when it is written, to sort or search on it, as the `columns` of a declaration. A translatable node is copied into one column per locale, named with a `{locale}` placeholder (`name_{locale}`). Not under a list, a map or a union.
 - `default()` is written by `JsonData::fill()` when neither the input nor the stored value has the path ([Filling](#filling)).
 - `Json` is macroable: laravel-folklore's medias module adds `Json::media()`, a `Json::reference()` with the key it writes, synced to `medias`. This package doesn't know media.
 - Property names are not empty and have no `.` or `*`.
+
+### Unions
+
+`Json::union('type', [...])` is an object whose schema is chosen by one of its properties, the discriminator: each of its values has its own object, a variant. The typed blocks of a page are a list of unions:
+
+```php
+function blocks(int $depth = 3): UnionType
+{
+    $variants = [
+        'text' => Json::object(['body' => Json::string()->translatable()->required()])->additional(false),
+        'image' => Json::object(['media' => Json::reference('media')->relation('medias'), 'caption' => Json::string()])->additional(false),
+    ];
+    if ($depth > 1) {
+        $variants['stack'] = Json::object(['blocks' => Json::list(blocks($depth - 1))])->additional(false);
+    }
+
+    return Json::union('type', $variants);
+}
+
+Json::object(['blocks' => Json::list(blocks())])->additional(false);
+// stored: {"blocks": [{"type": "text", "body": {"fr": "…"}}, {"type": "stack", "blocks": [{"type": "image", "media": "media://med_…"}]}]}
+```
+
+- **The discriminator** is written by the union, first in the stored object: a variant doesn't declare it. Its values are the keys of the variants.
+- **References.** The references of every variant are declared at the union's path (`blocks.*.media`, `blocks.*.blocks.*.media`), and apply wherever a stored object has them, whatever its type. Variants that share a property with the same key declare it once; two variants that give it different options are refused.
+- **Nesting** is built down to a depth: a node holds its children from its construction, so a schema can't contain itself. Each level adds its paths.
+- **`JsonData::fill()`** puts an object given for a union into the variant of its discriminator, or else of the stored object's. An object of the stored type replaces the properties it gives and keeps the others, as an object does; another type starts from nothing, since the stored properties are another variant's. A discriminator that isn't one of the variants is refused with `InvalidJsonData`, and so is a key outside a variant that is `additional(false)`. Defaults are written for the variant.
+- **`Json::rules()`** gives a union the `Union` rule: its discriminator is one of the variants, and its object is checked with the rules of that variant, whose errors are added at their own keys (`blocks.0.body`, `blocks.2.blocks.0.media`). `validated()` keeps the whole object.
+- A node under a union has no `input()` name and no `extract()`, as under a list.
 
 ### References
 
@@ -239,6 +269,7 @@ JsonData::fill($offer, $request->validated());
 | `map()` | `array`, `min`, `max` (number of keys); its values at `{key}.*` |
 | `document()` | `array` |
 | `any()` | None: the key is listed, so that `validated()` keeps it |
+| `union()` | `array`, and `Union`: the discriminator is one of the variants, and the object is checked with the rules of its variant, at their own keys ([Unions](#unions)) |
 
 - **The keys** are those of [Filling](#filling): the root properties by name, or by their `input()` name, and a nested object's properties under its key (`seo.title`). A nested node with an `input()` name has rules at both keys.
 - **`required()`** asks for the key when the model doesn't exist yet. A stored model keeps the paths the input doesn't give, so there, and for a node with a `default()`, which `fill()` writes, it only refuses an empty value (`sometimes`, `required`). A required property of an object is required with its object (`required_with:seo`); a nested node with an `input()` name at one of its two keys (`required_without`). The items of a list or a map replace the stored ones, so their required properties are always required.

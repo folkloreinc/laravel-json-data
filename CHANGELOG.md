@@ -6,6 +6,11 @@ The package is released in pre-releases, tagged `v1.0.0-alpha.N`, then `beta.N` 
 
 ## [Unreleased]
 
+### Added
+
+- `Json::union($discriminator, $variants)`: an object whose schema is chosen by its discriminator, for typed objects such as the blocks of a page. The references of its variants are declared at its path, `JsonData::fill()` puts an object into the variant of its discriminator, and `Json::rules()` checks it with the rules of that variant (the `Union` rule), at their own keys ([docs/json-data.md](docs/json-data.md#unions)).
+- A schema that declares the same reference path and key twice with different options is refused: identical declarations, such as a property that variants share, are declared once.
+
 ## [1.0.0-alpha.5] - 2026-11-02
 
 What sites on laravel-folklore 1.1 need to move their JSON data and declarations to 2.0 ([roadmap](docs/roadmap.md#migrating-1x-sites-100-alpha5)).

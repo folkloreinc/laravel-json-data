@@ -36,6 +36,10 @@ The behaviour of `laravel-folklore` 2.0.0-alpha.3, in its own package ([laravel-
 - [x] `Json::rules($model, $attribute)`: the schema compiled into Laravel validation rules on the flat input keys (`required()`, `nullable()`, `min()`, `max()`, `pattern()`, types, enums, references, nested lists and objects), for form requests. Laravel rules only, with no dependency (decided on 2026-10-23) ([#15](https://github.com/folkloreinc/laravel-json-data/issues/15), from [#6](https://github.com/folkloreinc/laravel-json-data/issues/6)) (1.0.0-alpha.3)
 - [ ] Validating on save, opt-in (`validatesOnSave()`) ([#16](https://github.com/folkloreinc/laravel-json-data/issues/16))
 
+## Unions
+
+- [x] `Json::union()`: typed objects chosen by a discriminator, with the references, the filling and the rules of each variant, nested down to a depth, for the blocks that laravel-folklore 2 stores in the page's JSON (its decision 0009)
+
 ## JSON Schema export
 
 - [ ] `toJsonSchema()`: a standard JSON Schema (draft 2020-12) of a column, with `x-reference` and `x-translatable` extensions, for API specs and front-end types ([#17](https://github.com/folkloreinc/laravel-json-data/issues/17))

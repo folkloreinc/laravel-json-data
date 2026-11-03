@@ -95,6 +95,10 @@ final class Filler
             return $given;
         }
 
+        if ($node instanceof UnionType) {
+            return $this->variantValue($node, $current, $given, $path);
+        }
+
         if ($node instanceof ObjectType) {
             $value = is_array($current) ? $current : [];
             foreach ($given as $key => $item) {
@@ -122,6 +126,31 @@ final class Filler
         }
 
         return $given;
+    }
+
+    /**
+     * The value of a union: the variant of the discriminator given, or else of the stored
+     * one, as an object of that variant, with the discriminator first. The stored object is
+     * kept only when it has the same type: another type's properties aren't this one's.
+     *
+     * @param  array<array-key, mixed>  $given
+     * @return array<array-key, mixed>
+     */
+    private function variantValue(UnionType $node, mixed $current, array $given, string $path): array
+    {
+        $discriminator = $node->getDiscriminator();
+        $stored = is_array($current) ? ($current[$discriminator] ?? null) : null;
+        $type = array_key_exists($discriminator, $given) ? $given[$discriminator] : $stored;
+        $variant = $node->getVariant($type);
+        if (is_null($variant) || (! is_string($type) && ! is_int($type))) {
+            throw InvalidJsonData::unknownVariant($path, $discriminator, $type);
+        }
+        $type = (string) $type;
+        $kept = is_array($current) && (is_string($stored) || is_int($stored)) && (string) $stored === $type ? $current : [];
+        unset($kept[$discriminator], $given[$discriminator]);
+        $value = $this->value($variant, $kept, $given, $path);
+
+        return [$discriminator => $type, ...(is_array($value) ? $value : [])];
     }
 
     /**
@@ -159,6 +188,12 @@ final class Filler
     {
         if (! is_array($value)) {
             return $value;
+        }
+
+        if ($node instanceof UnionType) {
+            $variant = $node->getVariant($value[$node->getDiscriminator()] ?? null);
+
+            return is_null($variant) ? $value : $this->withDefaults($variant, $value, $path);
         }
 
         if ($node instanceof ObjectType) {

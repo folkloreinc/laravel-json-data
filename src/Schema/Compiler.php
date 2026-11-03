@@ -58,16 +58,18 @@ final class Compiler
 
     /**
      * @param  list<string>  $segments  The path of the node, with `*` for the items of lists and maps.
+     * @param  bool  $repeated  Whether the node is under a list, a map or a union, where it has no input key or column of its own.
      */
     private function walk(Type $node, array $segments, bool $repeated): void
     {
         if ($repeated && ! is_null($node->getInput())) {
-            throw InvalidJsonData::invalidSchema('A node under a list or a map can\'t be read from an input key: ['.implode('.', $segments).'].');
+            throw InvalidJsonData::invalidSchema('A node under a list, a map or a union can\'t be read from an input key: ['.implode('.', $segments).'].');
         }
 
         match (true) {
             $node instanceof ObjectType => $this->walkObject($node, $segments, $repeated),
             $node instanceof ListType, $node instanceof MapType => $this->walk($node->getOf(), [...$segments, '*'], true),
+            $node instanceof UnionType => $this->walkUnion($node, $segments),
             $node instanceof ScalarType => $this->walkScalar($node, $segments, $repeated),
             $node instanceof DocumentType => $this->walkDocument($node, $segments),
             default => null,
@@ -77,6 +79,19 @@ final class Compiler
             foreach ($node->getPaths() as $path => $reference) {
                 $this->walkPath($reference, [...$segments, ...explode('.', $path)]);
             }
+        }
+    }
+
+    /**
+     * The variants of a union, at the union's path: their references apply wherever the
+     * stored object has them, whatever its type.
+     *
+     * @param  list<string>  $segments
+     */
+    private function walkUnion(UnionType $node, array $segments): void
+    {
+        foreach ($node->getVariants() as $variant) {
+            $this->walk($variant, $segments, true);
         }
     }
 
@@ -95,7 +110,7 @@ final class Compiler
             throw InvalidJsonData::invalidSchema("A node of paths() can't be read from an input key: [{$path}].");
         }
 
-        $this->references[] = $this->reference($node, $node->isTranslatable() ? $path.'.*' : $path);
+        $this->addReference($this->reference($node, $node->isTranslatable() ? $path.'.*' : $path));
     }
 
     /**
@@ -125,7 +140,7 @@ final class Compiler
         $path = implode('.', $segments);
 
         if ($node instanceof ReferenceType) {
-            $this->references[] = $this->reference($node, $node->isTranslatable() ? $path.'.*' : $path);
+            $this->addReference($this->reference($node, $node->isTranslatable() ? $path.'.*' : $path));
         }
 
         $column = $node->getExtract();
@@ -133,7 +148,7 @@ final class Compiler
             return;
         }
         if ($repeated) {
-            throw InvalidJsonData::invalidSchema("A node under a list or a map can't be extracted into a column: [{$path}].");
+            throw InvalidJsonData::invalidSchema("A node under a list, a map or a union can't be extracted into a column: [{$path}].");
         }
         if (! $node->isTranslatable()) {
             $this->column($path, $column);
@@ -155,7 +170,7 @@ final class Compiler
     private function walkDocument(DocumentType $node, array $segments): void
     {
         foreach ($node->getReferences() as $reference) {
-            $this->references[] = $this->reference($reference, implode('.', [...$segments, '**']));
+            $this->addReference($this->reference($reference, implode('.', [...$segments, '**'])));
         }
     }
 
@@ -177,6 +192,26 @@ final class Compiler
             'using' => $node->getUsing(),
             'delete' => $node->isDeletingUnreferenced() ? true : null,
         ], fn (string|bool|null $option) => ! is_null($option));
+    }
+
+    /**
+     * Adds a reference path once: the variants of a union that share a property declare it
+     * once. Two declarations of the same key at the same path must be the same.
+     *
+     * @param  array<string, mixed>  $declaration
+     */
+    private function addReference(array $declaration): void
+    {
+        $path = is_string($declaration['path'] ?? null) ? $declaration['path'] : '';
+        foreach ($this->references as $existing) {
+            if ($existing === $declaration) {
+                return;
+            }
+            if (($existing['path'] ?? null) === $path && ($existing['key'] ?? null) === ($declaration['key'] ?? null)) {
+                throw InvalidJsonData::invalidSchema("Two nodes declare [{$path}] with different options: the variants of a union that share a property declare it the same way.");
+            }
+        }
+        $this->references[] = $declaration;
     }
 
     private function column(string $path, string $column): void

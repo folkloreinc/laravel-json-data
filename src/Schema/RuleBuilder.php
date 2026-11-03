@@ -6,6 +6,7 @@ use Folklore\JsonData\Contracts\LocaleResolver;
 use Folklore\JsonData\JsonDataCast;
 use Folklore\JsonData\Schema\Rules\Reference;
 use Folklore\JsonData\Schema\Rules\Translatable;
+use Folklore\JsonData\Schema\Rules\Union;
 use Illuminate\Container\Container;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Validation\Rule;
@@ -58,6 +59,26 @@ final class RuleBuilder
         }
 
         return $rules;
+    }
+
+    /**
+     * The rules of the variant of a union at a key of the input (`blocks.0`): the object's
+     * keys, with the discriminator, and its properties, as under the union's path. The
+     * `Union` rule asks for them with the object it is given.
+     *
+     * @param  list<string>  $segments  The union's path in the attribute.
+     * @return array<string, list<mixed>>
+     */
+    public static function forVariant(Model $model, string $attribute, UnionType $union, ObjectType $variant, string $key, array $segments, bool $repeated): array
+    {
+        $builder = new self($model, $attribute);
+        $keys = [$union->getDiscriminator(), ...array_keys($variant->getProperties())];
+        $builder->add($key, [$variant->allowsAdditional() ? 'array' : 'array:'.implode(',', $keys)]);
+        foreach ($variant->getProperties() as $name => $property) {
+            $builder->walk($property, $key.'.'.$name, [...$segments, $name], $key, $repeated, alias: false);
+        }
+
+        return $builder->rules;
     }
 
     /**
@@ -136,6 +157,7 @@ final class RuleBuilder
 
         return match (true) {
             $node instanceof ObjectType => [$node->allowsAdditional() ? 'array' : 'array:'.implode(',', array_keys($node->getProperties()))],
+            $node instanceof UnionType => ['array', new Union($node, $this->model, $this->attribute, $segments, $this->repeatedUnder($segments))],
             $node instanceof ListType => ['array', 'list', ...$this->bounds($node->getMin(), $node->getMax())],
             $node instanceof MapType => ['array', ...$this->bounds($node->getMin(), $node->getMax())],
             $node instanceof DocumentType => ['array'],
@@ -168,6 +190,16 @@ final class RuleBuilder
             )],
             default => [],
         };
+    }
+
+    /**
+     * Whether a node at this path is under a list or a map, whose items are given in full.
+     *
+     * @param  list<string>  $segments
+     */
+    private function repeatedUnder(array $segments): bool
+    {
+        return in_array('*', $segments, true);
     }
 
     /**

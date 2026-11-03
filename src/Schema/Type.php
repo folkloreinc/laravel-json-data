@@ -52,7 +52,7 @@ abstract class Type
 
     /**
      * The key of the flat input that `JsonData::fill()` reads this node from, instead of
-     * its name (`seo.title` from `seo_title`). Not under a list or a map.
+     * its name (`seo.title` from `seo_title`). Not under a list, a map or a union.
      */
     public function input(string $name): static
     {

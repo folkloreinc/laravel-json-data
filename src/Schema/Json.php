@@ -81,6 +81,17 @@ class Json
         return new ObjectType($properties);
     }
 
+    /**
+     * An object whose schema is chosen by the value of its discriminator property: the
+     * blocks of a page, typed by `type` (`Json::union('type', ['text' => Json::object([...])])`).
+     *
+     * @param  array<array-key, mixed>  $variants  The object of each value of the discriminator.
+     */
+    public static function union(string $discriminator, array $variants): UnionType
+    {
+        return new UnionType($discriminator, $variants);
+    }
+
     public static function list(Type $of): ListType
     {
         return new ListType($of);
