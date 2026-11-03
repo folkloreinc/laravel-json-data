@@ -29,6 +29,13 @@ class InvalidJsonData extends InvalidArgumentException
         return new self("[{$locale}] at [{$path}] is not one of the locales of translatable values.");
     }
 
+    public static function unknownVariant(string $path, string $discriminator, mixed $value): self
+    {
+        $given = is_scalar($value) ? (string) $value : get_debug_type($value);
+
+        return new self("[{$given}] at [{$path}.{$discriminator}] is not one of the variants of its union.");
+    }
+
     public static function invalidSchema(string $message): self
     {
         return new self("Invalid JSON data schema: {$message}");

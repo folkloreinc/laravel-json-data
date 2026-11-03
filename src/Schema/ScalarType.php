@@ -27,7 +27,7 @@ abstract class ScalarType extends Type
     /**
      * Copies the value into a column of the model when it is written, to sort or search on
      * it. A translatable value is copied into one column per locale: the name has a
-     * `{locale}` placeholder (`title_{locale}`). Not under a list or a map.
+     * `{locale}` placeholder (`title_{locale}`). Not under a list, a map or a union.
      */
     public function extract(string $column): static
     {
