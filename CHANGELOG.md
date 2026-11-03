@@ -6,10 +6,17 @@ The package is released in pre-releases, tagged `v1.0.0-alpha.N`, then `beta.N` 
 
 ## [Unreleased]
 
+## [1.0.0-alpha.6] - 2026-11-03
+
+Unions, for the blocks that laravel-folklore 2 stores in the page's JSON ([roadmap](docs/roadmap.md#unions-100-alpha6)).
+
+### Breaking changes
+
+- A schema that declares the same reference path and key twice with different options is refused. Identical declarations, such as a property that variants share, are declared once.
+
 ### Added
 
 - `Json::union($discriminator, $variants)`: an object whose schema is chosen by its discriminator, for typed objects such as the blocks of a page. The references of its variants are declared at its path, `JsonData::fill()` puts an object into the variant of its discriminator, and `Json::rules()` checks it with the rules of that variant (the `Union` rule), at their own keys ([docs/json-data.md](docs/json-data.md#unions)).
-- A schema that declares the same reference path and key twice with different options is refused: identical declarations, such as a property that variants share, are declared once.
 
 ## [1.0.0-alpha.5] - 2026-11-02
 
@@ -112,7 +119,8 @@ The JSON data of `folklore/laravel-folklore` 2.0.0-alpha.3, in its own package (
 
 - `JsonDataCast::MEDIAS_HANDLE`, kept for the code that read it in laravel-folklore. Removed in 2.0.
 
-[Unreleased]: https://github.com/folkloreinc/laravel-json-data/compare/v1.0.0-alpha.5...v1.x
+[Unreleased]: https://github.com/folkloreinc/laravel-json-data/compare/v1.0.0-alpha.6...v1.x
+[1.0.0-alpha.6]: https://github.com/folkloreinc/laravel-json-data/compare/v1.0.0-alpha.5...v1.0.0-alpha.6
 [1.0.0-alpha.5]: https://github.com/folkloreinc/laravel-json-data/compare/v1.0.0-alpha.4...v1.0.0-alpha.5
 [1.0.0-alpha.4]: https://github.com/folkloreinc/laravel-json-data/compare/v1.0.0-alpha.3...v1.0.0-alpha.4
 [1.0.0-alpha.3]: https://github.com/folkloreinc/laravel-json-data/compare/v1.0.0-alpha.2...v1.0.0-alpha.3
