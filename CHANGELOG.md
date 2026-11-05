@@ -6,6 +6,10 @@ The package is released in pre-releases, tagged `v1.0.0-alpha.N`, then `beta.N` 
 
 ## [Unreleased]
 
+## [1.0.0-alpha.8] - 2026-11-05
+
+A JSON Schema of the stored value, for documentation, front-end types and tools that write data files ([roadmap](docs/roadmap.md#json-schema-export-100-alpha8)).
+
 ### Added
 
 - `toJsonSchema()`: a JSON Schema (draft 2020-12) of a node's stored value, and `Json::toJsonSchema($model, $attribute)` of a whole JSON attribute, with `x-reference`, `x-translatable`, `x-discriminator`, `x-paths` and `x-document` extensions ([#17](https://github.com/folkloreinc/laravel-json-data/issues/17), [docs](docs/json-data.md#json-schema)).
@@ -131,7 +135,8 @@ The JSON data of `folklore/laravel-folklore` 2.0.0-alpha.3, in its own package (
 
 - `JsonDataCast::MEDIAS_HANDLE`, kept for the code that read it in laravel-folklore. Removed in 2.0.
 
-[Unreleased]: https://github.com/folkloreinc/laravel-json-data/compare/v1.0.0-alpha.7...v1.x
+[Unreleased]: https://github.com/folkloreinc/laravel-json-data/compare/v1.0.0-alpha.8...v1.x
+[1.0.0-alpha.8]: https://github.com/folkloreinc/laravel-json-data/compare/v1.0.0-alpha.7...v1.0.0-alpha.8
 [1.0.0-alpha.7]: https://github.com/folkloreinc/laravel-json-data/compare/v1.0.0-alpha.6...v1.0.0-alpha.7
 [1.0.0-alpha.6]: https://github.com/folkloreinc/laravel-json-data/compare/v1.0.0-alpha.5...v1.0.0-alpha.6
 [1.0.0-alpha.5]: https://github.com/folkloreinc/laravel-json-data/compare/v1.0.0-alpha.4...v1.0.0-alpha.5
