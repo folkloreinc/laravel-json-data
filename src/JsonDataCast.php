@@ -64,6 +64,14 @@ class JsonDataCast implements CastsAttributes
     private static ?WeakMap $listening = null;
 
     /**
+     * The model classes that have no attribute cast with this cast, which the service
+     * provider's `saving` listener skips without looking at their casts again (#37).
+     *
+     * @var array<class-string<Model>, true>
+     */
+    private static array $uncast = [];
+
+    /**
      * The JSON attributes of a model that changed, recorded while it is being saved: what
      * its `saved` listener syncs. A `saved` listener that runs before the cast's and saves
      * the model again (`saveQuietly()`, as eloquent-sluggable's) syncs its original, so
@@ -1469,8 +1477,7 @@ class JsonDataCast implements CastsAttributes
         $classes = self::$listening[$dispatcher] ?? [];
         if (! isset($classes[$model::class])) {
             $dispatcher->listen('eloquent.saving: '.$model::class, function (Model $saving) {
-                self::preparePending($saving);
-                self::recordChanges($saving);
+                self::saving($saving);
             });
             $dispatcher->listen('eloquent.saved: '.$model::class, function (Model $saved) {
                 self::syncSaved($saved);
@@ -1480,6 +1487,52 @@ class JsonDataCast implements CastsAttributes
         }
 
         return true;
+    }
+
+    /**
+     * The service provider's `saving` listener of every model class (#37). The first save
+     * with events of a model whose class has the cast, and whose listeners aren't
+     * registered on its event dispatcher yet, registers them and does what its `saving`
+     * one does, which only runs from the next save: a JSON attribute written raw, without
+     * going through `set()`, is then synced like any other. A class without the cast is
+     * remembered, so that its next saves cost a lookup.
+     *
+     * @internal
+     */
+    public static function listenWhenSaving(Model $model): void
+    {
+        if (isset(self::$uncast[$model::class]) || self::isListening($model)) {
+            return;
+        }
+        if (count(self::castAttributes($model)) === 0) {
+            self::$uncast[$model::class] = true;
+
+            return;
+        }
+        if (self::listen($model)) {
+            self::saving($model);
+        }
+    }
+
+    /**
+     * What the cast's `saving` listener does: prepares the pending values, and records the
+     * JSON attributes that the save changes, for its `saved` listener.
+     */
+    protected static function saving(Model $model): void
+    {
+        self::preparePending($model);
+        self::recordChanges($model);
+    }
+
+    /**
+     * Whether the cast's listeners are registered for the model's class on its event
+     * dispatcher.
+     */
+    protected static function isListening(Model $model): bool
+    {
+        $dispatcher = $model::getEventDispatcher();
+
+        return ! is_null($dispatcher) && isset((self::$listening[$dispatcher] ?? [])[$model::class]);
     }
 
     /**

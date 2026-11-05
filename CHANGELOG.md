@@ -6,6 +6,10 @@ The package is released in pre-releases, tagged `v1.0.0-alpha.N`, then `beta.N` 
 
 ## [Unreleased]
 
+### Fixed
+
+- A model whose JSON attribute is written raw (`setRawAttributes()`, without `set()`) and saved with events is synced, even when no model of its class was assigned a JSON value before in the process: the service provider's `saving` listener registers the cast's listeners on the first save of a class that has the cast. Saves without events still aren't synced ([#37](https://github.com/folkloreinc/laravel-json-data/issues/37)).
+
 ## [1.0.0-alpha.6] - 2026-11-03
 
 Unions, for the blocks that laravel-folklore 2 stores in the page's JSON ([roadmap](docs/roadmap.md#unions-100-alpha6)).
