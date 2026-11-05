@@ -7,11 +7,13 @@ use Folklore\JsonData\JsonDataCast;
 use Folklore\JsonData\Tests\Feature\Fixtures\Block;
 use Folklore\JsonData\Tests\Feature\Fixtures\BrandGame;
 use Folklore\JsonData\Tests\Feature\Fixtures\Game;
+use Folklore\JsonData\Tests\Feature\Fixtures\Media;
 use Folklore\JsonData\Tests\Feature\Fixtures\Prize;
 use Folklore\JsonData\Tests\Feature\Fixtures\RegistryGame;
 use Folklore\JsonData\Tests\Feature\Fixtures\SluggedGame;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -93,6 +95,63 @@ class JsonDataSyncTest extends JsonDataTestCase
         $game->saveQuietly();
 
         $this->assertSame([], $game->blocks()->pluck('blocks.id')->all());
+    }
+
+    /**
+     * A JSON attribute written raw, without `set()`, is synced when the model is saved,
+     * even when no model of its class went through `set()` before in the process (#37).
+     */
+    public function test_a_json_attribute_written_raw_is_synced_when_the_model_is_saved()
+    {
+        $block = $this->makeBlock();
+        $game = $this->insertGame();
+        $this->assertFalse($this->castListensTo(Game::class));
+
+        $queries = $this->queriesOn('blocks_pivot', function () use ($game, $block) {
+            $game->setRawAttributes([...$game->getAttributes(), 'data' => json_encode(['blocks' => ['blocks://'.$block->id]])]);
+            $game->save();
+        }, 'insert');
+
+        $this->assertSame([$block->id], $game->blocks()->pluck('blocks.id')->all());
+        $this->assertSame(1, $queries);
+
+        $game->setRawAttributes([...$game->getAttributes(), 'data' => json_encode(['blocks' => []])]);
+        $game->save();
+
+        $this->assertSame([], $game->blocks()->pluck('blocks.id')->all());
+    }
+
+    public function test_a_json_attribute_written_raw_is_synced_when_the_model_is_created()
+    {
+        $block = $this->makeBlock();
+
+        $game = new Game;
+        $game->setRawAttributes(['handle' => 'quiz', 'data' => json_encode(['blocks' => ['blocks://'.$block->id]])]);
+        $game->save();
+
+        $this->assertSame([$block->id], $game->blocks()->pluck('blocks.id')->all());
+    }
+
+    public function test_a_json_attribute_written_raw_and_saved_without_events_is_not_synced()
+    {
+        $block = $this->makeBlock();
+        $game = $this->insertGame();
+
+        $game->setRawAttributes([...$game->getAttributes(), 'data' => json_encode(['blocks' => ['blocks://'.$block->id]])]);
+        $game->saveQuietly();
+
+        $this->assertSame([], $game->blocks()->pluck('blocks.id')->all());
+        $this->assertFalse($this->castListensTo(Game::class));
+    }
+
+    /**
+     * The cast listens to the classes that have it, not to every model saved.
+     */
+    public function test_saving_a_model_without_the_cast_registers_no_listener()
+    {
+        $this->makeMedia()->update(['name' => 'renamed']);
+
+        $this->assertFalse($this->castListensTo(Media::class));
     }
 
     public function test_a_save_that_doesnt_change_the_json_attributes_doesnt_sync()
@@ -300,6 +359,28 @@ class JsonDataSyncTest extends JsonDataTestCase
     /**
      * The number of queries on a table, or of one kind, that a callback runs.
      */
+    /**
+     * A game inserted without Eloquent, so that no model of its class was assigned or
+     * saved before in the application, as in a fresh process.
+     */
+    private function insertGame(): Game
+    {
+        return Game::query()->findOrFail(DB::table('games')->insertGetId(['handle' => 'quiz']));
+    }
+
+    /**
+     * Whether a model class has listeners of its own for `saving` or `saved`, as the cast
+     * registers them: the service provider's listener is a wildcard.
+     *
+     * @param  class-string  $class
+     */
+    private function castListensTo(string $class): bool
+    {
+        $listeners = Event::getRawListeners();
+
+        return isset($listeners['eloquent.saving: '.$class]) || isset($listeners['eloquent.saved: '.$class]);
+    }
+
     private function queriesOn(string $table, callable $callback, ?string $kind = null): int
     {
         DB::flushQueryLog();
