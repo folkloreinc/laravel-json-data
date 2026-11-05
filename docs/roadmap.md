@@ -40,9 +40,9 @@ The behaviour of `laravel-folklore` 2.0.0-alpha.3, in its own package ([laravel-
 
 - [x] `Json::union()`: typed objects chosen by a discriminator, with the references, the filling and the rules of each variant, nested down to a depth, for the blocks that laravel-folklore 2 stores in the page's JSON (its decision 0023, [#35](https://github.com/folkloreinc/laravel-json-data/pull/35)) (1.0.0-alpha.6)
 
-## JSON Schema export
+## JSON Schema export (1.0.0-alpha.8)
 
-- [ ] `toJsonSchema()`: a standard JSON Schema (draft 2020-12) of a column, with `x-reference` and `x-translatable` extensions, for API specs and front-end types ([#17](https://github.com/folkloreinc/laravel-json-data/issues/17))
+- [x] `toJsonSchema()`: a standard JSON Schema (draft 2020-12) of a column, with `x-reference` and `x-translatable` extensions, for API specs and front-end types ([#17](https://github.com/folkloreinc/laravel-json-data/issues/17))
 
 ## Migrating 1.x sites (1.0.0-alpha.5)
 

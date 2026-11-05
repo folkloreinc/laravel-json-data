@@ -280,7 +280,30 @@ JsonData::fill($offer, $request->validated());
 - The rules are an array: a form request replaces the rules of a key, for instance for a handler that takes values the `Reference` rule refuses, such as URLs.
 - An attribute without a schema has no rules.
 
-Not built yet: validating on save (`validatesOnSave()`), opt-in, and the JSON Schema export, `toJsonSchema()`, a standard JSON Schema (draft 2020-12) with `x-reference` and `x-translatable` extensions, for API specs and front-end types ([roadmap](roadmap.md)).
+Not built yet: validating on save (`validatesOnSave()`), opt-in ([roadmap](roadmap.md)).
+
+### JSON Schema
+
+`Json::toJsonSchema($model, 'data')` gives a JSON Schema (draft 2020-12) of a JSON attribute, and `->toJsonSchema()` the schema of any node, for API specs, front-end types, documentation and files written by hand or by a tool, such as seed files. It describes the **stored** value, the one the column and its seed files hold, not the flat input of `JsonData::fill()`:
+
+| Node | JSON Schema |
+| --- | --- |
+| `string()`, `integer()`, `number()`, `boolean()` | `type`, with `minLength`/`maxLength`, `minimum`/`maximum` and `pattern`. A PHP pattern loses its delimiters, and its modifiers go in `x-pattern-modifiers`, which JSON Schema has no keyword for |
+| `date()`, `datetime()` | `string` with the format `date` or `date-time` |
+| `enum()` | `enum` with the values stored |
+| `reference()`, `relation()` | a `string` matching `^{key}://.+$`, with `x-reference: {key, relation}` |
+| translatable | an object keyed by the locales of the [`LocaleResolver`](#locales), or by those given to `toJsonSchema()`, with `x-translatable: true` |
+| `object()` | `properties`, `required` for its `required()` properties, `additionalProperties` as `additional()` |
+| `list()`, `map()` | `array` with `items`, `object` with `additionalProperties`, and their bounds |
+| `union()` | `oneOf` its variants, each with the discriminator's value as a `const`, and `x-discriminator` |
+| `document()` | any value, with `x-document: true` and its `x-references` |
+| `any()` | any value (`{}`) |
+
+- **`nullable()`** adds `null` to the `type` or to the `enum`, else wraps the schema in `anyOf`.
+- **`default()`** is written as it would be stored: an enum case as its value, a date as its string.
+- **Reference paths** declared with `paths()` go in `x-paths`, by path.
+- `required()` means here that the stored object has the property: [`Json::rules()`](#validation-rules) checks a form's input, where a stored model keeps the paths the input doesn't give.
+- The schema is compiled first, as for the rules: a schema `Json::rules()` refuses is refused here too.
 
 ## Declaring paths
 

@@ -6,6 +6,10 @@ The package is released in pre-releases, tagged `v1.0.0-alpha.N`, then `beta.N` 
 
 ## [Unreleased]
 
+### Added
+
+- `toJsonSchema()`: a JSON Schema (draft 2020-12) of a node's stored value, and `Json::toJsonSchema($model, $attribute)` of a whole JSON attribute, with `x-reference`, `x-translatable`, `x-discriminator`, `x-paths` and `x-document` extensions ([#17](https://github.com/folkloreinc/laravel-json-data/issues/17), [docs](docs/json-data.md#json-schema)).
+
 ## [1.0.0-alpha.7] - 2026-11-05
 
 A fix for the sites that write a model's JSON raw: its relations are synced however it was written (#37).
