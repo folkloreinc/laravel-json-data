@@ -85,4 +85,18 @@ abstract class Type
     {
         return $this->input;
     }
+
+    /**
+     * A JSON Schema (draft 2020-12) of the node's stored value: references as
+     * `{key}://{identifier}`, translatable values as objects keyed by locale
+     * (docs/json-data.md, "JSON Schema").
+     *
+     * @param  list<string>|null  $locales  The locales of translatable values, else the
+     *                                      `LocaleResolver`'s.
+     * @return array<string, mixed>
+     */
+    public function toJsonSchema(?array $locales = null): array
+    {
+        return JsonSchemaBuilder::for($this, $locales);
+    }
 }

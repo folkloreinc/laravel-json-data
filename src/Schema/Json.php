@@ -143,4 +143,22 @@ class Json
     {
         return RuleBuilder::for($model, $attribute);
     }
+
+    /**
+     * The JSON Schema (draft 2020-12) of a model's JSON attribute, as it is stored: for API
+     * specs, front-end types and seed files (docs/json-data.md, "JSON Schema").
+     *
+     * @return array<string, mixed>
+     */
+    public static function toJsonSchema(Model $model, string $attribute): array
+    {
+        $schema = Schemas::for($model, $attribute);
+        if (is_null($schema)) {
+            throw InvalidJsonData::invalidSchema('['.$model::class."::{$attribute}] has no schema.");
+        }
+        // Compiling checks the schema, as Json::rules() does
+        Compiler::compile($schema);
+
+        return ['$schema' => JsonSchemaBuilder::DIALECT] + JsonSchemaBuilder::for($schema);
+    }
 }
