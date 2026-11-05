@@ -6,6 +6,10 @@ The package is released in pre-releases, tagged `v1.0.0-alpha.N`, then `beta.N` 
 
 ## [Unreleased]
 
+## [1.0.0-alpha.7] - 2026-11-05
+
+A fix for the sites that write a model's JSON raw: its relations are synced however it was written (#37).
+
 ### Fixed
 
 - A model whose JSON attribute is written raw (`setRawAttributes()`, without `set()`) and saved with events is synced, even when no model of its class was assigned a JSON value before in the process: the service provider's `saving` listener registers the cast's listeners on the first save of a class that has the cast. Saves without events still aren't synced ([#37](https://github.com/folkloreinc/laravel-json-data/issues/37)).
@@ -123,7 +127,8 @@ The JSON data of `folklore/laravel-folklore` 2.0.0-alpha.3, in its own package (
 
 - `JsonDataCast::MEDIAS_HANDLE`, kept for the code that read it in laravel-folklore. Removed in 2.0.
 
-[Unreleased]: https://github.com/folkloreinc/laravel-json-data/compare/v1.0.0-alpha.6...v1.x
+[Unreleased]: https://github.com/folkloreinc/laravel-json-data/compare/v1.0.0-alpha.7...v1.x
+[1.0.0-alpha.7]: https://github.com/folkloreinc/laravel-json-data/compare/v1.0.0-alpha.6...v1.0.0-alpha.7
 [1.0.0-alpha.6]: https://github.com/folkloreinc/laravel-json-data/compare/v1.0.0-alpha.5...v1.0.0-alpha.6
 [1.0.0-alpha.5]: https://github.com/folkloreinc/laravel-json-data/compare/v1.0.0-alpha.4...v1.0.0-alpha.5
 [1.0.0-alpha.4]: https://github.com/folkloreinc/laravel-json-data/compare/v1.0.0-alpha.3...v1.0.0-alpha.4
