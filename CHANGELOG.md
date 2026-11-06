@@ -6,6 +6,10 @@ The package is released in pre-releases, tagged `v1.0.0-alpha.N`, then `beta.N` 
 
 ## [Unreleased]
 
+## [1.0.0-alpha.9] - 2026-11-06
+
+A public way to read the declared reference paths, and unwrappers that an application chains before a package's (#42).
+
 ### Added
 
 - `JsonData::referencePaths($model, $attribute)`: the reference paths declared for a JSON attribute, from its schema or the declarations hook, as one entry per relation and key (`relation`, `key`, `paths`), without the compiled declarations. It replaces reading the internal `JsonData::declarations()` ([#42](https://github.com/folkloreinc/laravel-json-data/issues/42), [docs](docs/json-data.md#reading-the-declared-paths)).
@@ -140,7 +144,8 @@ The JSON data of `folklore/laravel-folklore` 2.0.0-alpha.3, in its own package (
 
 - `JsonDataCast::MEDIAS_HANDLE`, kept for the code that read it in laravel-folklore. Removed in 2.0.
 
-[Unreleased]: https://github.com/folkloreinc/laravel-json-data/compare/v1.0.0-alpha.8...v1.x
+[Unreleased]: https://github.com/folkloreinc/laravel-json-data/compare/v1.0.0-alpha.9...v1.x
+[1.0.0-alpha.9]: https://github.com/folkloreinc/laravel-json-data/compare/v1.0.0-alpha.8...v1.0.0-alpha.9
 [1.0.0-alpha.8]: https://github.com/folkloreinc/laravel-json-data/compare/v1.0.0-alpha.7...v1.0.0-alpha.8
 [1.0.0-alpha.7]: https://github.com/folkloreinc/laravel-json-data/compare/v1.0.0-alpha.6...v1.0.0-alpha.7
 [1.0.0-alpha.6]: https://github.com/folkloreinc/laravel-json-data/compare/v1.0.0-alpha.5...v1.0.0-alpha.6
