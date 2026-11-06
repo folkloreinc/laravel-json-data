@@ -361,6 +361,25 @@ This is the shape of laravel-folklore's 1.x `getJsonDataRelations()` and `getJso
 
 The string-keyed static macros of 1.x (`JsonDataCast::macro('medias:get', …)`, `'App\Models\Game:medias:before_set'`) are laravel-folklore's: its `Folklore\Eloquent\JsonDataCast` keeps them, and its adapter passes them through `callbacks`, so a macro for a relation applies to the paths declared with that relation, before its handler. This package's cast has no macros.
 
+## Reading the declared paths
+
+`JsonData::referencePaths($model, 'data')` returns the reference paths declared for a JSON attribute, from its schema or else from the [declarations hook](#declaring-paths), for code that walks the references of a value itself, such as a repository that prepares its values before saving them. It doesn't expose the compiled declarations: one entry per relation and key, in the order they are declared, with the [path patterns](#paths) of its references.
+
+```php
+JsonData::referencePaths($offer, 'data');
+// [
+//     ['relation' => 'medias', 'key' => 'medias', 'paths' => ['image.*', 'gallery.*', 'body.**']],
+//     ['relation' => 'prizes', 'key' => 'prize', 'paths' => ['prizes.*.prize']],
+//     ['relation' => null, 'key' => 'prize', 'paths' => ['source', 'body.**']],
+// ]
+```
+
+- `relation` is the relation the references are synced to. It is `null` for a reference without one (`Json::reference()` without `relation()`, a declaration with a `key` only) and for a relation given as a callable, which names it per value.
+- `key` is the key declared for the paths. It is `null` when the declaration doesn't name one (`Json::relation()`, a 1.x declaration): the references are then written with the first key mapped to the relation's model, or else with the relation's name.
+- The paths of a relation and key are grouped, whatever their other options.
+- The declarations hook is given the attribute's stored value, or the value passed as the third argument, for declarations that depend on the value: `JsonData::referencePaths($model, 'data', $data)`.
+- An attribute that isn't cast with `JsonDataCast` throws an `InvalidArgumentException`; one that nothing declares has no paths (`[]`).
+
 ## Writing
 
 Writing happens in two steps: `set()` sorts the values when they are assigned, and the values that need preparing are turned into references when the model is saved ([decisions/0013](decisions/0013-defer-prepare-until-saving.md)).
@@ -618,12 +637,29 @@ What the package doesn't know, an application or a package sets once, in a servi
 | Hook | Given | laravel-folklore uses it for |
 |---|---|---|
 | `JsonData::declareUsing(fn (Model $model, string $attribute, mixed $value, array $attributes): ?array)` | The declarations of a column without a schema (an attribute whose `jsonDataSchema()` returns `null`, or a model without one): `references` and `columns`, as [above](#declaring-paths). The first callback that returns an array wins | Its 1.x declarations and macros |
-| `JsonData::unwrapUsing(fn (object $value, ?JsonReference $target): mixed)` | A value that isn't a model, to turn into the model or the identifier it stands for. Returns the value unchanged when it doesn't know it | Its entities (`HasModel`, `ToEntity`, `Entity`) |
+| `JsonData::unwrapUsing(fn (object $value, ?JsonReference $target): mixed)` | A value that isn't a model, to turn into the model or the identifier it stands for. Returns the value unchanged when it doesn't know it. Asked last; a later call replaces it ([Unwrapping values](#unwrapping-values)) | Its entities (`HasModel`, `ToEntity`, `Entity`) |
+| `JsonData::unwrapFirstUsing(fn (object $value, ?JsonReference $target): mixed)` | The same, asked before the other unwrappers: the last callback added first, then the one of `unwrapUsing()` | — |
 | `JsonData::syncUsing(fn (Model $model, string $relationName, Relation $relation, array $ids): bool, ?fn (Model $model, string $relationName, Relation $relation): ?array)` | The relation of a model and the keys of the referenced models. Returns true when it synced them, instead of the cast. The second callback, optional, returns the keys it has synced for a relation, or `null` when it doesn't sync it, so that a sync can be planned ([Planning a sync](#planning-a-sync)) | The mediatheque's usage graph, under the `json` handle |
 | `JsonReferencesRewriteCommand::discoverUsing(fn (): iterable)` | Model classes that the rewrite and sync commands look at by default | Its pages and blocks |
 | A `LocaleResolver` bound in the container | The locales of translatable nodes ([Locales](#locales)) | `site.locales` |
 
 `JsonData::flush()` forgets the registry and the hooks, for tests.
+
+### Unwrapping values
+
+A value at a reference path that isn't a model, a scalar or an array, such as an entity, is unwrapped into the model or the identifier it stands for before its handler prepares it, by the callbacks of `unwrapFirstUsing()`, then the one of `unwrapUsing()`. Each one returns the value unchanged when it doesn't know it, and the next one is then asked; the first that returns something else wins.
+
+`unwrapUsing()` is a package's default, such as laravel-folklore's for its entities, which turns any entity into its model or its id. An application adds its own cases before it with `unwrapFirstUsing()`, without replacing it, whichever service provider boots first:
+
+```php
+// An entity from an external source, not saved yet: create its model
+JsonData::unwrapFirstUsing(fn (object $value, ?JsonReference $target) => $value instanceof ExternalAuthor && ! $value->exists()
+    ? app(Authors::class)->createFromSource($value)->getModel()
+    : $value);
+```
+
+- The callbacks of `unwrapFirstUsing()` are asked from the last added to the first, so that the most specific case, an application's, comes before a package's. A later call to `unwrapUsing()` replaces only its own callback, and `unwrapUsing(null)` removes it.
+- A value may be unwrapped more than once: when it is written under a recursive path (`**`), when it is prepared on saving, and by the `Reference` validation rule. A callback that creates a model creates it once, for instance by finding it first.
 
 ## From 1.x
 

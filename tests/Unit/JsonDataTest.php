@@ -12,6 +12,7 @@ use Folklore\JsonData\Tests\Unit\Fixtures\ReferencedPrize;
 use Illuminate\Database\Eloquent\Model;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
+use stdClass;
 
 #[Group('core')]
 class JsonDataTest extends TestCase
@@ -195,6 +196,97 @@ class JsonDataTest extends TestCase
 
         $this->assertSame([], JsonData::keys());
         $this->assertFalse(JsonData::enforcesMap());
+    }
+
+    public function test_unwrap_returns_models_scalars_and_arrays_as_they_are()
+    {
+        JsonData::unwrapUsing(fn (object $value) => 'unwrapped');
+        $media = new ReferencedMedia;
+
+        $this->assertSame($media, JsonData::unwrap($media));
+        $this->assertSame(12, JsonData::unwrap(12));
+        $this->assertSame(['id' => 12], JsonData::unwrap(['id' => 12]));
+        $this->assertSame('unwrapped', JsonData::unwrap(new stdClass));
+    }
+
+    public function test_a_later_call_to_unwrap_using_replaces_the_callback()
+    {
+        $value = new stdClass;
+        JsonData::unwrapUsing(fn (object $value) => 'first');
+        JsonData::unwrapUsing(fn (object $value) => $value);
+
+        $this->assertSame($value, JsonData::unwrap($value));
+
+        JsonData::unwrapUsing(fn (object $value) => 'second');
+        $this->assertSame('second', JsonData::unwrap($value));
+
+        JsonData::unwrapUsing(null);
+        $this->assertSame($value, JsonData::unwrap($value));
+    }
+
+    public function test_the_callbacks_of_unwrap_first_using_are_asked_before_unwrap_using()
+    {
+        $asked = [];
+        $known = new stdClass;
+        $unknown = new stdClass;
+        JsonData::unwrapUsing(function (object $value) use (&$asked) {
+            $asked[] = 'package';
+
+            return 'package';
+        });
+        JsonData::unwrapFirstUsing(function (object $value) use (&$asked, $known) {
+            $asked[] = 'application';
+
+            return $value === $known ? 'application' : $value;
+        });
+
+        $this->assertSame('application', JsonData::unwrap($known));
+        $this->assertSame(['application'], $asked);
+
+        $asked = [];
+        $this->assertSame('package', JsonData::unwrap($unknown));
+        $this->assertSame(['application', 'package'], $asked);
+    }
+
+    public function test_the_last_callback_added_with_unwrap_first_using_is_asked_first()
+    {
+        $value = new stdClass;
+        $asked = [];
+        JsonData::unwrapFirstUsing(function (object $value) use (&$asked) {
+            $asked[] = 'earlier';
+
+            return 'earlier';
+        });
+        JsonData::unwrapFirstUsing(function (object $value) use (&$asked) {
+            $asked[] = 'later';
+
+            return $value;
+        });
+
+        $this->assertSame('earlier', JsonData::unwrap($value));
+        $this->assertSame(['later', 'earlier'], $asked);
+    }
+
+    public function test_unwrap_using_keeps_the_callbacks_of_unwrap_first_using()
+    {
+        $value = new stdClass;
+        $target = JsonReference::to(ReferencedMedia::class);
+        JsonData::unwrapFirstUsing(fn (object $value, ?JsonReference $given) => $given === $target ? 'application' : $value);
+        JsonData::unwrapUsing(fn (object $value) => 'package');
+        JsonData::unwrapUsing(null);
+
+        $this->assertSame('application', JsonData::unwrap($value, $target));
+        $this->assertSame($value, JsonData::unwrap($value));
+    }
+
+    public function test_flush_forgets_the_unwrappers()
+    {
+        $value = new stdClass;
+        JsonData::unwrapUsing(fn (object $value) => 'package');
+        JsonData::unwrapFirstUsing(fn (object $value) => 'application');
+        JsonData::flush();
+
+        $this->assertSame($value, JsonData::unwrap($value));
     }
 
     private function assertThrowsMessage(callable $callback, string $message): void

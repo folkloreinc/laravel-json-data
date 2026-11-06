@@ -12,6 +12,7 @@ use Folklore\JsonData\Schema\Schemas;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Collection;
+use InvalidArgumentException;
 
 /**
  * The global registry of reference keys in JSON data, like Eloquent's morph map
@@ -47,9 +48,18 @@ final class JsonData
     private static array $declarers = [];
 
     /**
+     * The callback of `unwrapUsing()`, asked last.
+     *
      * @var (Closure(object, JsonReference|null): mixed)|null
      */
     private static ?Closure $unwrapper = null;
+
+    /**
+     * The callbacks of `unwrapFirstUsing()`, the last added first.
+     *
+     * @var list<Closure(object, JsonReference|null): mixed>
+     */
+    private static array $firstUnwrappers = [];
 
     /**
      * @var list<Closure(Model, string, Relation<Model, Model, mixed>, list<mixed>): bool>
@@ -266,7 +276,8 @@ final class JsonData
     /**
      * What is declared for a JSON attribute of a model: its reference paths and the
      * columns it is copied into, from its schema, or else from the declarations hook.
-     * Empty when nothing declares it.
+     * Empty when nothing declares it. Outside the package, `referencePaths()` reads the
+     * reference paths.
      *
      * @param  array<array-key, mixed>  $attributes
      * @return array{references: iterable<mixed>, columns: array<string, string>}
@@ -296,11 +307,50 @@ final class JsonData
     }
 
     /**
+     * The reference paths declared for a JSON attribute of a model, from its schema or
+     * else from the declarations hook (docs/json-data.md, "Reading the declared paths"):
+     * one entry per relation and key, in the order they are declared, with the path
+     * patterns of its references (`image.*`, `body.**`).
+     *
+     * `relation` is null for a reference that isn't synced to a relation (a node without
+     * one, or a relation given as a callable), and `key` is null when the declaration
+     * doesn't name one: the references are then written with the first key mapped to the
+     * relation's model, or else with the relation's name.
+     *
+     * @param  array<array-key, mixed>|null  $value  The value the declarations are read for, which the declarations hook is given; by default, the attribute's stored value.
+     * @return list<array{relation: string|null, key: string|null, paths: list<string>}>
+     *
+     * @throws InvalidArgumentException When the attribute isn't cast with `JsonDataCast`.
+     */
+    public static function referencePaths(Model $model, string $attribute, ?array $value = null): array
+    {
+        $stored = JsonDataCast::stored($model, $attribute);
+        $declared = self::declarations($model, $attribute, $value ?? $stored, $model->getAttributes())['references'];
+
+        $entries = [];
+        foreach (JsonDataCast::normalizeJsonDataRelations(is_array($declared) || $declared instanceof Collection ? $declared : []) as $relation) {
+            if (! is_array($relation)) {
+                continue;
+            }
+            $relationName = is_string($relation['relation'] ?? null) ? $relation['relation'] : null;
+            $key = is_string($relation['key'] ?? null) ? $relation['key'] : null;
+            $paths = is_array($relation['path'] ?? null) ? array_values(array_filter($relation['path'], 'is_string')) : [];
+            $id = serialize([$relationName, $key]);
+            $entries[$id] ??= ['relation' => $relationName, 'key' => $key, 'paths' => []];
+            $entries[$id]['paths'] = array_values(array_unique([...$entries[$id]['paths'], ...$paths]));
+        }
+
+        return array_values($entries);
+    }
+
+    /**
      * Turns a value that isn't a model, such as an application's entity, into the model or
      * the identifier it stands for, before a handler prepares it (docs/json-data.md,
      * "Hooks"). The callback is given the value and the target of the key being prepared,
-     * if any, and returns the value unchanged when it doesn't know it. A later call
-     * replaces it.
+     * if any, and returns the value unchanged when it doesn't know it.
+     *
+     * It is asked last, after the callbacks of `unwrapFirstUsing()`. A later call replaces
+     * it, and null removes it; the callbacks of `unwrapFirstUsing()` are kept.
      *
      * @param  (Closure(object, JsonReference|null): mixed)|null  $unwrapper
      */
@@ -310,16 +360,45 @@ final class JsonData
     }
 
     /**
-     * The model or identifier a value stands for, through the callback of `unwrapUsing()`.
-     * Models, scalars and arrays are returned as they are.
+     * Adds a callback asked before the other unwrappers: the ones added before it with this
+     * method, then the one of `unwrapUsing()` (docs/json-data.md, "Unwrapping values"). An
+     * application uses it to handle its own values, such as an entity that isn't saved yet,
+     * without replacing the callback that a package set with `unwrapUsing()`.
+     *
+     * It is given the same arguments as the callback of `unwrapUsing()`, and returns the
+     * value unchanged when it doesn't know it: the next callback is then asked. The first
+     * callback that returns something else wins.
+     *
+     * @param  Closure(object, JsonReference|null): mixed  $unwrapper
+     */
+    public static function unwrapFirstUsing(Closure $unwrapper): void
+    {
+        array_unshift(self::$firstUnwrappers, $unwrapper);
+    }
+
+    /**
+     * The model or identifier a value stands for, through the callbacks of
+     * `unwrapFirstUsing()`, then the one of `unwrapUsing()`: the first that doesn't return
+     * the value unchanged wins. Models, scalars and arrays are returned as they are.
      */
     public static function unwrap(mixed $value, ?JsonReference $target = null): mixed
     {
-        if (! is_object($value) || $value instanceof Model || is_null(self::$unwrapper)) {
+        if (! is_object($value) || $value instanceof Model) {
             return $value;
         }
 
-        return (self::$unwrapper)($value, $target);
+        $unwrappers = self::$firstUnwrappers;
+        if (! is_null(self::$unwrapper)) {
+            $unwrappers[] = self::$unwrapper;
+        }
+        foreach ($unwrappers as $unwrapper) {
+            $unwrapped = $unwrapper($value, $target);
+            if ($unwrapped !== $value) {
+                return $unwrapped;
+            }
+        }
+
+        return $value;
     }
 
     /**
@@ -391,6 +470,7 @@ final class JsonData
         self::$enforced = false;
         self::$declarers = [];
         self::$unwrapper = null;
+        self::$firstUnwrappers = [];
         self::$syncers = [];
         self::$syncedReaders = [];
     }
