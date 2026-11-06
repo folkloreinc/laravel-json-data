@@ -6,11 +6,13 @@ use Folklore\JsonData\JsonData;
 use Folklore\JsonData\JsonDataCast;
 use Folklore\JsonData\Tests\Feature\Fixtures\CountedBlock;
 use Folklore\JsonData\Tests\Feature\Fixtures\Game;
+use Folklore\JsonData\Tests\Feature\Fixtures\Media;
 use Folklore\JsonData\Tests\Feature\Fixtures\Prize;
 use Folklore\JsonData\Tests\Feature\Fixtures\RecursiveGame;
 use Folklore\JsonData\Tests\Feature\Fixtures\Wrapper;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use stdClass;
 
 /**
  * Characterization tests: they pin how JsonDataCast behaved in laravel-folklore 1.1, with
@@ -68,6 +70,30 @@ class JsonDataCastTest extends JsonDataTestCase
         $this->assertSame('medias://'.$first->id, $raw['image']['fr']);
         $this->assertSame('medias://'.$second->id, $raw['image']['en']);
         $this->assertSame('medias://'.$third->id, $raw['questions'][0]['choices'][0]['image']);
+    }
+
+    public function test_an_application_unwraps_its_own_values_before_the_callback_of_a_package()
+    {
+        $saved = $this->makeMedia();
+        // A package's callback: a wrapper stands for its model, any other value for its name
+        JsonData::unwrapUsing(fn (object $value) => match (true) {
+            $value instanceof Wrapper => $value->model,
+            property_exists($value, 'name') => $value->name,
+            default => $value,
+        });
+        // The application's: a value from its source that isn't saved yet becomes a model
+        JsonData::unwrapFirstUsing(fn (object $value) => $value instanceof stdClass && isset($value->name)
+            ? Media::firstOrCreate(['name' => $value->name])
+            : $value);
+
+        $game = new Game;
+        $game->data = ['image' => ['fr' => new Wrapper($saved), 'en' => (object) ['name' => 'from-source']]];
+        $game->save();
+
+        $created = Media::where('name', 'from-source')->sole();
+        $raw = $this->rawData($game);
+        $this->assertSame('medias://'.$saved->id, $raw['image']['fr']);
+        $this->assertSame('medias://'.$created->id, $raw['image']['en']);
     }
 
     public function test_it_leaves_the_values_outside_the_declared_paths_alone()

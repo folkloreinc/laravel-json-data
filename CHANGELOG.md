@@ -6,6 +6,11 @@ The package is released in pre-releases, tagged `v1.0.0-alpha.N`, then `beta.N` 
 
 ## [Unreleased]
 
+### Added
+
+- `JsonData::referencePaths($model, $attribute)`: the reference paths declared for a JSON attribute, from its schema or the declarations hook, as one entry per relation and key (`relation`, `key`, `paths`), without the compiled declarations. It replaces reading the internal `JsonData::declarations()` ([#42](https://github.com/folkloreinc/laravel-json-data/issues/42), [docs](docs/json-data.md#reading-the-declared-paths)).
+- `JsonData::unwrapFirstUsing()`: adds an unwrapper asked before the others, the last added first, then the one of `unwrapUsing()`; the first that doesn't return the value unchanged wins. An application handles its own values, such as an entity not saved yet, without replacing a package's callback. `unwrapUsing()` keeps its behaviour: a later call replaces its callback only ([#42](https://github.com/folkloreinc/laravel-json-data/issues/42), [docs](docs/json-data.md#unwrapping-values)).
+
 ## [1.0.0-alpha.8] - 2026-11-05
 
 A JSON Schema of the stored value, for documentation, front-end types and tools that write data files ([roadmap](docs/roadmap.md#json-schema-export-100-alpha8)).
