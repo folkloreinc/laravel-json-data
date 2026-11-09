@@ -147,10 +147,27 @@ final class JsonSchemaBuilder
     private function referenceValue(ReferenceType $node): array
     {
         $key = $node->getKey();
-
-        return [
+        $string = [
             'type' => 'string',
             'pattern' => is_null($key) ? '^[^:/]+://.+$' : '^'.preg_quote($key, '/').'://.+$',
+        ];
+        $properties = $node->getProperties();
+        if (count($properties) === 0) {
+            return [...$string, 'x-reference' => $this->reference($node)];
+        }
+
+        // With properties, the reference string, or an object of the reference and some of them
+        return [
+            'oneOf' => [
+                $string,
+                [
+                    'type' => 'object',
+                    'properties' => ['id' => $string, ...array_map(fn (Type $property) => $this->node($property), $properties)],
+                    'required' => ['id'],
+                    'additionalProperties' => false,
+                    'minProperties' => 2,
+                ],
+            ],
             'x-reference' => $this->reference($node),
         ];
     }

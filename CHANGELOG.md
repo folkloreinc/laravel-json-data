@@ -6,6 +6,10 @@ The package is released in pre-releases, tagged `v1.0.0-alpha.N`, then `beta.N` 
 
 ## [Unreleased]
 
+### Added
+
+- `properties()` on a reference node: a reference that keeps values of its own beside it, such as the edits of an image for this use. A value with some of them is stored as `{ "id": "{key}://{identifier}", …properties }`, and reads with its `id` resolved; one without any is stored as the reference string, so stored data keeps its form. Its rules check the `id` and the properties, and its JSON Schema is `oneOf` the string and the object ([#45](https://github.com/folkloreinc/laravel-json-data/issues/45), [docs](docs/json-data.md#references)).
+
 ## [1.0.0-alpha.9] - 2026-11-06
 
 A public way to read the declared reference paths, and unwrappers that an application chains before a package's (#42).

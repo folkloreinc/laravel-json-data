@@ -56,6 +56,17 @@ class Reference implements ValidationRule
             return;
         }
 
+        // A reference with properties may be an object: its `id` is the reference, and the
+        // properties have their own rules
+        if (count($this->node->getProperties()) > 0 && is_array($value) && ! array_is_list($value)) {
+            $value = $value['id'] ?? null;
+            if (is_null($value)) {
+                $fail('The :attribute has no reference in its id.');
+
+                return;
+            }
+        }
+
         $value = JsonData::unwrap($value, $target);
         if ($value instanceof Model) {
             if (! $target->accepts($value) || ! $this->allows($value, $key, $target)) {

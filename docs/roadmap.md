@@ -55,6 +55,10 @@ What sites on `laravel-folklore` 1.1 need to move their JSON data and declaratio
 - [x] `deletesUnreferenced()`: the `delete` option of 1.x on a reference node ([#26](https://github.com/folkloreinc/laravel-json-data/issues/26))
 - [x] `paths()`: reference nodes at paths under a node, without describing its structure ([#27](https://github.com/folkloreinc/laravel-json-data/issues/27))
 
+## References with properties
+
+- [ ] `properties()` on a reference node: values a reference keeps beside it, such as the edits of an image for this use, stored as `{ "id": "{key}://{identifier}", …properties }`, for laravel-folklore's block images ([#45](https://github.com/folkloreinc/laravel-json-data/issues/45))
+
 ## Beta and release candidate
 
 - [ ] Public API frozen: the schema's nodes, the hooks, the commands; `laravel-folklore` 2 and the pilot on the beta
