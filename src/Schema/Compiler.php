@@ -185,13 +185,17 @@ final class Compiler
             throw InvalidJsonData::invalidSchema("deletesUnreferenced() deletes the rows of a relation: give the node at [{$path}] one.");
         }
 
+        // A reference with properties is at the path, or in the `id` of the object stored there
+        $properties = array_keys($node->getProperties());
+
         return array_filter([
-            'path' => $path,
+            'path' => count($properties) > 0 ? [$path, $path.'.id'] : $path,
             'key' => $node->getKey(),
             'relation' => $node->getRelation(),
             'using' => $node->getUsing(),
             'delete' => $node->isDeletingUnreferenced() ? true : null,
-        ], fn (string|bool|null $option) => ! is_null($option));
+            'properties' => count($properties) > 0 ? $properties : null,
+        ], fn (mixed $option) => ! is_null($option));
     }
 
     /**
@@ -202,16 +206,30 @@ final class Compiler
      */
     private function addReference(array $declaration): void
     {
-        $path = is_string($declaration['path'] ?? null) ? $declaration['path'] : '';
+        $path = self::firstPath($declaration);
         foreach ($this->references as $existing) {
             if ($existing === $declaration) {
                 return;
             }
-            if (($existing['path'] ?? null) === $path && ($existing['key'] ?? null) === ($declaration['key'] ?? null)) {
+            if (self::firstPath($existing) === $path && ($existing['key'] ?? null) === ($declaration['key'] ?? null)) {
                 throw InvalidJsonData::invalidSchema("Two nodes declare [{$path}] with different options: the variants of a union that share a property declare it the same way.");
             }
         }
         $this->references[] = $declaration;
+    }
+
+    /**
+     * The path of a declaration: the first of its paths, which a reference with properties
+     * also has in the `id` of an object.
+     *
+     * @param  array<string, mixed>  $declaration
+     */
+    private static function firstPath(array $declaration): string
+    {
+        $paths = $declaration['path'] ?? null;
+        $path = is_array($paths) ? reset($paths) : $paths;
+
+        return is_string($path) ? $path : '';
     }
 
     private function column(string $path, string $column): void

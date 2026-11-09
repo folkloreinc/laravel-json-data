@@ -167,6 +167,31 @@ class JsonDataCast implements CastsAttributes
     }
 
     /**
+     * The object stored for a value of a reference with properties: its `id` and the
+     * properties it gives, in their declared order, or null when it gives none of them, or no
+     * `id`, and is stored as its reference.
+     *
+     * @param  array<array-key, mixed>  $value
+     * @param  array<array-key, mixed>  $properties  The names of the reference's properties.
+     * @return array<string, mixed>|null
+     */
+    protected static function referenceObject(array $value, array $properties): ?array
+    {
+        if (is_null($value['id'] ?? null)) {
+            return null;
+        }
+        $object = ['id' => $value['id']];
+        foreach ($properties as $property) {
+            $given = is_string($property) ? ($value[$property] ?? null) : null;
+            if (! is_null($given) && $given !== []) {
+                $object[$property] = $given;
+            }
+        }
+
+        return count($object) > 1 ? $object : null;
+    }
+
+    /**
      * Prepare the given value for storage.
      *
      * @param  Model  $model
@@ -199,6 +224,17 @@ class JsonDataCast implements CastsAttributes
                             call_user_func($relation['skip'], $item, $path, 'set', $model, $relation)
                         ) {
                             return $newValue;
+                        }
+                        if (! $recursive && is_array($item) && ! array_is_list($item) && is_array($relation['properties'] ?? null)) {
+                            // A reference with properties: an object keeps them, and its `id`
+                            // is prepared at its own path; without any, it is the reference
+                            $object = self::referenceObject($item, $relation['properties']);
+                            if (! is_null($object)) {
+                                data_set($newValue, $path, $object);
+
+                                return $newValue;
+                            }
+                            $item = $item['id'] ?? null;
                         }
                         if (is_array($item) && ($recursive || array_is_list($item))) {
                             return $newValue;

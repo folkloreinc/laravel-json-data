@@ -105,6 +105,12 @@ final class RuleBuilder
             }
         } elseif ($node instanceof ListType || $node instanceof MapType) {
             $this->walk($node->getOf(), $key.'.*', [...$segments, '*'], null, true, $alias);
+        } elseif ($node instanceof ReferenceType) {
+            // The properties of a reference given as an object, which are optional
+            $objectKey = $node->isTranslatable() ? $key.'.*' : $key;
+            foreach ($node->getProperties() as $name => $property) {
+                $this->walk($property, $objectKey.'.'.$name, [...$segments, ...($node->isTranslatable() ? ['*'] : []), $name], $objectKey, true, $alias);
+            }
         }
     }
 

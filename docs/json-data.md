@@ -30,7 +30,7 @@ A reference is a string `{key}://{identifier}`:
 - `key` matches `[A-Za-z][A-Za-z0-9_-]*` (`JsonData::KEY_PATTERN`). Mapped keys are lowercase by convention; unmapped 1.x keys are relation names, which may be in camel case;
 - `identifier` is the value of the key's identifier column, as a string. It is never empty and has no whitespace.
 
-The format is unchanged from 1.x, so JavaScript code that reads `relation://id` today keeps working. Since a key now always means the same model, a reader outside PHP can tell what a reference points to from its key alone.
+The format is unchanged from 1.x, so JavaScript code that reads `relation://id` today keeps working. A reference node with [`properties()`](#references) stores an object around the reference when the value has one of them: `{"id": "media://med_…", "transform": {…}}`. Since a key now always means the same model, a reader outside PHP can tell what a reference points to from its key alone.
 
 ## The registry of keys
 
@@ -108,7 +108,7 @@ class Offer extends Model implements HasJsonDataSchema
 | `Json::map(node)` | An object with any keys | `min()`, `max()` (number of keys); `paths()` |
 | `Json::any()` | Any value, not looked into | For data the application doesn't describe yet; `paths()` |
 | `Json::union(discriminator, [value => object])` | The object of the variant its discriminator names, with the discriminator first | See [Unions](#unions) |
-| `Json::reference(key)` | `{key}://{identifier}` | `relation()`, `using()`, `deletesUnreferenced()` |
+| `Json::reference(key)` | `{key}://{identifier}`, or `{"id": "{key}://{identifier}", …}` with `properties()` | `relation()`, `using()`, `deletesUnreferenced()`, `properties()` |
 | `Json::relation(relation)` | `{key}://{identifier}`, with the key of the relation's related model | A reference without a key, as a 1.x declaration; `deletesUnreferenced()` |
 | `Json::document()` | A document (ProseMirror JSON…), as given | `references(...)` |
 
@@ -191,6 +191,21 @@ A schema compiles into the declarations of the [hook](#declaring-paths), so a co
   - A path doesn't describe the structure: it adds no input key to `JsonData::fill()` and no validation rule. The node it is chained on fills and validates as it does without it (`Json::any()`: as given, with no rules).
   - Segments are property names or `*`, with no `**` (`Json::document()->references()` covers any depth). On an object, a path that starts with one of its properties is refused: declare it on that property.
   - Use it when a full schema would describe levels the application doesn't otherwise need, such as blocks of blocks, or paths that aren't one tree (`cards.*` and `cards.fr.*`). A schema that describes the structure gets its validation rules and filling too.
+- **`properties([...])`** lets a reference keep values of its own beside it, such as the edits of an image for this use (laravel-folklore's block images keep their crop this way):
+
+  ```php
+  'image' => Json::reference('media')->relation('medias')->properties([
+      'transform' => Json::object()->additional()->nullable(),
+  ]),
+  // given ['id' => 'med_…', 'transform' => ['crop' => [...]]]: stored {"id": "media://med_…", "transform": {"crop": {...}}}
+  // given ['id' => 'med_…'], 'med_…' or a model:            stored "media://med_…"
+  ```
+
+  - **Write:** an object with an `id`, the reference in any form its handler takes, and some of the properties is stored as `{ "id": "{key}://{identifier}", …properties }`, in the declared order. Its other keys are left out, and so are the properties that are `null` or empty. An object without any of them, or a value of another form (a model, an identifier, a reference), is stored as the reference string, as without properties: data stored before keeps its form until a value gives a property.
+  - **Read:** the object's `id` is resolved like any reference (`$data['image']['id']` is the model), and the properties are returned as stored. A reference string reads as its model, as before.
+  - The reference is declared at the node's path and at its `id` (`['path' => ['image', 'image.id'], …, 'properties' => ['transform']]`), so it is synced, listed (at `image.id`), loaded in batches and rewritten wherever it is. A translatable node has an object per locale (`cover.*`, `cover.*.id`).
+  - **Validation:** the [rule](#validation-rules) checks the object's `id` as a reference, and each property has its own rules (`image.transform`). **JSON Schema:** `oneOf` the reference string and the object.
+  - Properties are optional plain values: a property named `id`, `required()`, with an `input()` name, an `extract()` column, or a reference under it is refused with `InvalidJsonData`.
 - **`deletesUnreferenced()`** on a node with a relation deletes, when the references are synced, the rows of the relation that the JSON no longer references: the `delete` option of a 1.x declaration, which it compiles to (`'uris' => Json::list(Json::relation('uris')->deletesUnreferenced())`) ([#26](https://github.com/folkloreinc/laravel-json-data/issues/26)). See [Syncing](#syncing).
 
 ### Filling

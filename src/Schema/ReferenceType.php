@@ -2,6 +2,8 @@
 
 namespace Folklore\JsonData\Schema;
 
+use Folklore\JsonData\Exceptions\InvalidJsonData;
+
 /**
  * A reference to a model, stored as `{key}://{identifier}` (docs/json-data.md, "Stored
  * format"). The key must be mapped. With `relation()`, the references are synced to that
@@ -10,6 +12,10 @@ namespace Folklore\JsonData\Schema;
  *
  * What is given to it (a model, an identifier, a file…) is prepared by the key's handler
  * when the model is saved, as for any reference path.
+ *
+ * With `properties()`, a value may carry values of its own beside its reference, such as the
+ * edits of an image for this use: it is stored as `{ "id": "{key}://{identifier}", …properties }`
+ * when it has one of them, and as the reference string otherwise.
  */
 class ReferenceType extends ScalarType
 {
@@ -36,6 +42,11 @@ class ReferenceType extends ScalarType
     }
 
     protected bool $deletesUnreferenced = false;
+
+    /**
+     * @var array<string, Type>
+     */
+    protected array $properties = [];
 
     /**
      * Deletes, when the model's references are synced, the rows of the relation that the
@@ -65,6 +76,62 @@ class ReferenceType extends ScalarType
         $this->using = $handler;
 
         return $this;
+    }
+
+    /**
+     * Values that a reference keeps beside it, such as the edits of an image for this use
+     * (`['transform' => Json::object()->additional()]`). A value given as an object with an
+     * `id`, the reference, and some of these properties is stored as `{ "id": "{key}://{identifier}",
+     * …properties }`, with its other keys left out; one without any of them, or a value of another
+     * form (a model, an identifier…), is stored as the reference string, as without properties.
+     * On read, the object's `id` is resolved. The properties are optional plain values: no
+     * reference, column or input key of their own.
+     *
+     * @param  array<array-key, mixed>  $properties  Nodes by name.
+     */
+    public function properties(array $properties): static
+    {
+        $nodes = [];
+        foreach ($properties as $name => $property) {
+            if (! is_string($name) || $name === '' || $name === 'id' || str_contains($name, '.') || str_contains($name, '*')) {
+                throw InvalidJsonData::invalidSchema("The properties of a reference are named, other than [id], with no `.` or `*`: [{$name}].");
+            }
+            if (! $property instanceof Type) {
+                throw InvalidJsonData::invalidSchema("The property [{$name}] of a reference is not a schema node.");
+            }
+            if ($property->isRequired() || ! is_null($property->getInput()) || self::declaresReferences($property)) {
+                throw InvalidJsonData::invalidSchema("The property [{$name}] of a reference is an optional plain value: not required, with no input key and no reference.");
+            }
+            if ($property instanceof ScalarType && ! is_null($property->getExtract())) {
+                throw InvalidJsonData::invalidSchema("The property [{$name}] of a reference can't be extracted into a column.");
+            }
+            $nodes[$name] = $property;
+        }
+        $this->properties = $nodes;
+
+        return $this;
+    }
+
+    /**
+     * @return array<string, Type>
+     */
+    public function getProperties(): array
+    {
+        return $this->properties;
+    }
+
+    /**
+     * Whether a node is, or has under it, a reference.
+     */
+    private static function declaresReferences(Type $node): bool
+    {
+        return match (true) {
+            $node instanceof ReferenceType, $node instanceof DocumentType, $node instanceof UnionType => true,
+            $node instanceof ObjectType => count($node->getPaths()) > 0 || count(array_filter($node->getProperties(), self::declaresReferences(...))) > 0,
+            $node instanceof ListType, $node instanceof MapType => count($node->getPaths()) > 0 || self::declaresReferences($node->getOf()),
+            $node instanceof AnyType => count($node->getPaths()) > 0,
+            default => false,
+        };
     }
 
     /**
