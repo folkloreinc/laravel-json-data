@@ -6,6 +6,10 @@ The package is released in pre-releases, tagged `v1.0.0-alpha.N`, then `beta.N` 
 
 ## [Unreleased]
 
+## [1.0.0-alpha.10] - 2026-11-09
+
+References that keep values of their own beside them, such as the edits of an image (#45).
+
 ### Added
 
 - `properties()` on a reference node: a reference that keeps values of its own beside it, such as the edits of an image for this use. A value with some of them is stored as `{ "id": "{key}://{identifier}", …properties }`, and reads with its `id` resolved; one without any is stored as the reference string, so stored data keeps its form. Its rules check the `id` and the properties, and its JSON Schema is `oneOf` the string and the object ([#45](https://github.com/folkloreinc/laravel-json-data/issues/45), [docs](docs/json-data.md#references)).
@@ -148,7 +152,8 @@ The JSON data of `folklore/laravel-folklore` 2.0.0-alpha.3, in its own package (
 
 - `JsonDataCast::MEDIAS_HANDLE`, kept for the code that read it in laravel-folklore. Removed in 2.0.
 
-[Unreleased]: https://github.com/folkloreinc/laravel-json-data/compare/v1.0.0-alpha.9...v1.x
+[Unreleased]: https://github.com/folkloreinc/laravel-json-data/compare/v1.0.0-alpha.10...v1.x
+[1.0.0-alpha.10]: https://github.com/folkloreinc/laravel-json-data/compare/v1.0.0-alpha.9...v1.0.0-alpha.10
 [1.0.0-alpha.9]: https://github.com/folkloreinc/laravel-json-data/compare/v1.0.0-alpha.8...v1.0.0-alpha.9
 [1.0.0-alpha.8]: https://github.com/folkloreinc/laravel-json-data/compare/v1.0.0-alpha.7...v1.0.0-alpha.8
 [1.0.0-alpha.7]: https://github.com/folkloreinc/laravel-json-data/compare/v1.0.0-alpha.6...v1.0.0-alpha.7
