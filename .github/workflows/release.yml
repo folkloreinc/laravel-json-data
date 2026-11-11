@@ -8,20 +8,23 @@ on:
   push:
     tags: ['v1.*']
 
-permissions:
-  contents: write
-  checks: read
+permissions: {}
 
 jobs:
   release:
+    # Creates the GitHub release (contents: write) after reading the checks of the tagged commit
+    permissions:
+      contents: write
+      checks: read
     name: Release
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
+          persist-credentials: false
           fetch-depth: 0
 
       - name: Check the version
